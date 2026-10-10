@@ -81,7 +81,7 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_select_point(self, user_input: dict[str, str] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
-        options = {ALL_POINTS_KEY: f"Wszystkie punkty poboru ({len(self._available)})"}
+        options = {ALL_POINTS_KEY: f"Wszystkie konta rozliczeniowe ({len(self._available)})"}
         options.update({str(acc["id"]): describe_billing_account(acc) for acc in self._available})
 
         if user_input is not None:
@@ -139,5 +139,5 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if account_id is not None:
             data[CONF_ACCOUNT_ID] = account_id
 
-        title = describe_billing_account(account) if len(self._accounts) > 1 else self._username
+        title = describe_billing_account(account) if account else self._username
         return self.async_create_entry(title=title, data=data)

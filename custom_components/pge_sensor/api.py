@@ -9,34 +9,13 @@ from typing import Optional
 
 import requests
 
+from .accounts import describe_billing_account, points_from_documents, account_sort_key
+
 _LOGGER = logging.getLogger(__name__)
 
 
 class PgeScraperError(RuntimeError):
     """Domain-specific exception raised by PgeScraper."""
-
-
-def describe_billing_account(account: dict) -> str:
-    """Build a human-readable label for a billing account (point of consumption).
-
-    The mBOK API does not publicly document field names for this endpoint, so
-    probe the common variants observed in practice before falling back to the id.
-    """
-    for key in (
-        "ppeNumber",
-        "premiseAddress",
-        "address",
-        "shortName",
-        "name",
-        "consumerNumber",
-        "accountNumber",
-        "number",
-    ):
-        value = account.get(key)
-        if value:
-            return str(value)
-    account_id = account.get("id")
-    return f"Punkt poboru {account_id}" if account_id is not None else "Punkt poboru"
 
 
 @dataclass
@@ -89,7 +68,16 @@ class PgeScraper:
         try:
             response = self._session.post(self.BILLING_ACCOUNTS_URL, json={}, timeout=self._timeout)
             response.raise_for_status()
-            return response.json().get("billingAccounts", [])
+            accounts = response.json().get("billingAccounts", [])
+            for account in accounts:
+                if not account.get("ppms") and account.get("id") is not None:
+                    # Optional enrichment must not prevent account selection.
+                    try:
+                        documents = self._get_documents(account["id"])
+                        account["ppms"] = points_from_documents(documents)
+                    except (PgeScraperError, requests.RequestException, ValueError, TypeError):
+                        _LOGGER.debug("Supply-point details unavailable for an account")
+            return sorted(accounts, key=account_sort_key)
         except requests.RequestException as exc:
             raise PgeScraperError("Failed to fetch billing accounts") from exc
 
