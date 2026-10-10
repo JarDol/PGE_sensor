@@ -98,6 +98,7 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 CONF_PASSWORD: self._password,
                                 CONF_ACCOUNT_ID: acc["id"],
                                 "label": describe_billing_account(acc),
+                                "account_number": acc.get("accountNumber"),
                             },
                         )
                     )
@@ -126,6 +127,7 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_USERNAME: username,
                 CONF_PASSWORD: import_data[CONF_PASSWORD],
                 CONF_ACCOUNT_ID: account_id,
+                "account_number": import_data.get("account_number"),
             },
         )
 
@@ -138,6 +140,8 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         data: dict[str, Any] = {CONF_USERNAME: self._username, CONF_PASSWORD: self._password}
         if account_id is not None:
             data[CONF_ACCOUNT_ID] = account_id
+            if account.get("accountNumber"):
+                data["account_number"] = str(account["accountNumber"])
 
         title = describe_billing_account(account) if account else self._username
         return self.async_create_entry(title=title, data=data)
