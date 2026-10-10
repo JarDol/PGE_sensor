@@ -14,12 +14,6 @@ SENSOR_KEYS = {
     "billing_period": "okres_rozliczeniowy",
     "current_payment": "biezaca_platnosc",
     "due_date": "termin_platnosci",
-    "actual_invoice_amount": "kwota_rozliczenia",
-    "settlement_value_pln": "wartosc_energii",
-    "forecast_energy": "prognoza_poboru",
-    "bank_date": "data_banku",
-    "energy_storage_1": "bank_s1",
-    "energy_storage_2": "bank_s2",
 }
 
 
