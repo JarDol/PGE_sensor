@@ -18,6 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
+from .entity_ids import account_number_for_entry, default_entity_id
 from .const import CONF_ACCOUNT_ID, DOMAIN
 from .coordinator import PgeEbokCoordinator
 
@@ -54,6 +55,16 @@ async def async_setup_entry(
         PgeCurrentPaymentSensor(coordinator, slug, username, device_name),
         PgeDueDateSensor(coordinator, slug, username, device_name),
     ]
+
+    multiple_accounts = sum(
+        item.disabled_by is None for item in hass.config_entries.async_entries(DOMAIN)
+    ) > 1
+    account_number = account_number_for_entry(entry.data, entry.title)
+    for entity in entities:
+        key = entity.unique_id.removeprefix(f"{slug}_")
+        entity.entity_id = default_entity_id(
+            account_number, key, multiple_accounts=multiple_accounts
+        )
 
     async_add_entities(entities)
 
