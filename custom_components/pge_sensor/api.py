@@ -36,6 +36,15 @@ class BalanceInfo:
     invoice_amount: Optional[float] = None
     billing_period: Optional[str] = None
     current_payment: Optional[float] = None
+    settlement_date: Optional[str] = None
+    settlement_invoice: Optional[str] = None
+    settlement_amount: Optional[float] = None
+    forecast_energy: Optional[float] = None
+    forecast_period: Optional[str] = None
+    actual_invoice_amount: Optional[float] = None
+    actual_invoice_number: Optional[str] = None
+    actual_invoice_date: Optional[str] = None
+    prosument: Optional[bool] = None
 
 
 class PgeScraper:
@@ -87,6 +96,10 @@ class PgeScraper:
         If ``account_id`` is not provided, the default (or first available)
         billing account is used, preserving the historical single-account behavior.
         """
+        from .settlement import (
+            billing_period as settlement_period, latest_actual, latest_invoice, numeric,
+        )
+
         # Always perform a fresh login to ensure the access token is valid (it expires over time)
         self._login()
 
@@ -109,7 +122,7 @@ class PgeScraper:
         # Filter for documents that actually need to be paid
         unpaid_docs = [
             doc for doc in documents 
-            if doc.get("amountToPay", 0.0) > 0 or doc.get("paymentStatus") != "PAID"
+            if (doc.get("amountToPay") or 0.0) > 0 or doc.get("paymentStatus") != "PAID"
         ]
 
         def parse_date(date_str: str) -> datetime:
@@ -151,41 +164,48 @@ class PgeScraper:
                 paid_date = parse_date(target_doc["paidDate"]).date()
                 
             current_payment = target_doc.get("amountToPay")
-            ppm_consumptions = target_doc.get("ppmConsumptions", [])
-            if ppm_consumptions:
-                latest_ppm = ppm_consumptions[0]
-                period_from = latest_ppm.get("billingPeriodFrom")
-                period_to = latest_ppm.get("billingPeriodTo")
-                if period_from and period_to:
-                    try:
-                        d_from = parse_date(period_from).strftime("%d.%m.%Y")
-                        d_to = parse_date(period_to).strftime("%d.%m.%Y")
-                        billing_period = f"{d_from} - {d_to}"
-                    except Exception:
-                        billing_period = None
-                ppe = latest_ppm.get("ppmNumber")
-                consumed_energy = latest_ppm.get("consumptionValue")
-                feed_in_energy = latest_ppm.get("feedInValue")
-                settled_energy = latest_ppm.get("valueSettledEnergyConsumed")
-
-                # Fetch datawarehouse if prosument
-                if target_doc.get("prosument") is True:
-                    ppm_id = latest_ppm.get("ppm", {}).get("id")
-                    if document_id and ppm_id:
-                        datawarehouse_url = f"{self.BASE_URL}/mbok-service-v1/billingAccountsDocument/{document_id}/datawarehouse/{ppm_id}"
-                        try:
-                            dw_response = self._session.get(datawarehouse_url, timeout=self._timeout)
-                            if dw_response.status_code == 200:
-                                energy_storage = dw_response.json()
-                        except Exception:
-                            # If it fails, simply leave energy_storage as None
-                            pass
-            
+            # Financial metadata remains attached to the payment document.
+            # Energy and bank belong exclusively to the latest actual settlement.
             # If no unpaid doc, we can still provide a due date from the latest doc
             if not due_date and target_doc.get("paymentDueDate"):
                 date_parsed = parse_date(target_doc["paymentDueDate"])
                 if date_parsed != datetime.max:
                     due_date = date_parsed.date()
+
+        actual = latest_actual(documents)
+        # A standard consumer's INVOICE may have no ppmConsumptions at all.
+        # Its financial amount is still valid; do not require energy details.
+        actual_invoice = latest_invoice(documents)
+        settlement_date = settlement_invoice = settlement_amount = None
+        forecast_energy = forecast_period = None
+        if target_doc and target_doc.get("documentType") == "PREPAYMENT_INVOICE":
+            forecasts = target_doc.get("ppmConsumptions") or []
+            if len(forecasts) == 1:
+                forecast_energy = numeric(forecasts[0].get("consumptionValue"))
+                forecast_period, _ = settlement_period(forecasts[0])
+        # Multiple PPE require explicit aggregation/selection. Do not present
+        # the first point alone as the entire account's energy or bank.
+        if actual and len(actual["ppmConsumptions"]) == 1:
+            ppm = actual["ppmConsumptions"][0]
+            consumed_energy = numeric(ppm.get("consumptionValue"))
+            feed_in_energy = numeric(ppm.get("feedInValue"))
+            # API valueSettledEnergyConsumed is a monetary value, NOT kWh.
+            settled_energy = None
+            settlement_amount = numeric(ppm.get("valueSettledEnergyConsumed"))
+            settlement_invoice = actual.get("documentNumber")
+            billing_period, settlement_date = settlement_period(ppm)
+            ppe = ppm.get("ppmNumber")
+            document_id = actual.get("documentId")
+            ppm_id = (ppm.get("ppm") or {}).get("id")
+            if actual.get("prosument") is True and document_id and ppm_id:
+                url = f"{self.BASE_URL}/mbok-service-v1/billingAccountsDocument/{document_id}/datawarehouse/{ppm_id}"
+                try:
+                    response = self._session.get(url, timeout=self._timeout)
+                    response.raise_for_status()
+                    payload = response.json()
+                    energy_storage = payload if isinstance(payload, dict) else None
+                except (requests.RequestException, ValueError):
+                    _LOGGER.warning("Unable to retrieve settlement bank; leaving it unknown")
 
         return BalanceInfo(
             amount=amount,
@@ -201,7 +221,15 @@ class PgeScraper:
             invoice_amount=invoice_amount,
             energy_storage=energy_storage,
             billing_period=billing_period,
-            current_payment=current_payment
+            current_payment=current_payment,
+            settlement_date=settlement_date, settlement_invoice=settlement_invoice,
+            settlement_amount=settlement_amount, forecast_energy=forecast_energy,
+            forecast_period=forecast_period,
+            actual_invoice_amount=numeric(actual_invoice.get("totalAmount")) if actual_invoice else None,
+            actual_invoice_number=actual_invoice.get("documentNumber") if actual_invoice else None,
+            actual_invoice_date=str(actual_invoice.get("creationDate") or "")[:10] or None if actual_invoice else None,
+            prosument=(target_doc.get("prosument") if target_doc and isinstance(target_doc.get("prosument"), bool)
+                       else actual_invoice.get("prosument") if actual_invoice else None)
         )
 
     def _login(self) -> None:
@@ -269,7 +297,7 @@ class PgeScraper:
             raise PgeScraperError(f"Failed to fetch balance for account {account_id}") from exc
 
     def _get_documents(self, account_id: int) -> list[dict]:
-        url = f"https://mbok-services.gkpge.pl/mbok-service-v1/billingAccounts/{account_id}/documents/filter?pageNo=0&pageSize=15"
+        url = f"https://mbok-services.gkpge.pl/mbok-service-v1/billingAccounts/{account_id}/documents/filter?pageNo=0&pageSize=100"
         try:
             response = self._session.post(url, json={}, timeout=self._timeout)
             response.raise_for_status()
