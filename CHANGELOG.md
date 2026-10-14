@@ -4,12 +4,6 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
-## [1.6.1] - 2026-10-14
-
-### Fixed
-- PL: Dodano brakujący plik `hacs.json`. Bez niego HACS odrzucał instalację wybranej wersji komunikatem „The version … for this integration can not be used with HACS”.
-- EN: Added the missing `hacs.json` file. Without it HACS refused to install a selected version with "The version … for this integration can not be used with HACS".
-
 ## [1.6.0] - 2026-10-14
 
 ### Added
@@ -33,6 +27,10 @@ All notable changes to this project will be documented in this file. The format 
 ### Deprecated
 - PL: Sensor „Zużycie po rozliczeniu” jest wyłączany przez integrację (wartość była błędnie wystawiana w kWh, a jest kwotą w PLN). Zastępuje go sensor „Wartość rozliczenia energii”. Historia i wpis encji nie są usuwane.
 - EN: The "Zużycie po rozliczeniu" sensor is disabled by the integration (its value was wrongly exposed as kWh while it is a PLN amount). It is replaced by the "energy settlement value" sensor. Its history and registry entry are not removed.
+
+### Fixed
+- PL: Dodano brakujący plik `hacs.json`. Bez niego HACS odrzucał instalację wybranej wersji komunikatem „The version … for this integration can not be used with HACS”.
+- EN: Added the missing `hacs.json` file. Without it HACS refused to install a selected version with "The version … for this integration can not be used with HACS".
 
 ## [1.5.1] - 2026-08-13
 
