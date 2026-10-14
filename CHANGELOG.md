@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-14
+
+### Added
+- PL: Czytelny wybór konta w kreatorze konfiguracji — zamiast samego numeru konta widoczny jest adres punktu poboru, numer PPE oraz oznaczenia (domyślne, prosument, ARCHIWALNE). Konta aktywne są wyświetlane przed archiwalnymi (dzięki uprzejmości @ciechompl).
+- EN: Readable account selection in the config flow — instead of a bare account number it now shows the supply point address, PPE number and flags (default, prosumer, ARCHIVED). Active accounts are listed before archived ones (courtesy of @ciechompl).
+- PL: Krótkie identyfikatory nowych encji, np. `sensor.pge_saldo` przy jednym koncie lub `sensor.pge_<nr_konta>_saldo` przy kilku. Istniejące identyfikatory encji pozostają bez zmian.
+- EN: Short IDs for new entities, e.g. `sensor.pge_saldo` for a single account or `sensor.pge_<account_no>_saldo` for multiple accounts. Existing entity IDs are kept unchanged.
+- PL: Nowe sensory: kwota rzeczywistej faktury rozliczeniowej, wartość rozliczenia energii (PLN), prognozowany pobór (kWh), data salda banku oraz bank energii osobno dla stref S1 i S2 (po zastosowaniu współczynnika opustu). Szczegóły w `docs/settlement-sensors.md` (dzięki uprzejmości @ciechompl).
+- EN: New sensors: actual settlement invoice amount, energy settlement value (PLN), forecast consumption (kWh), bank balance date and energy bank per zone S1/S2 (after applying the net-metering factor). See `docs/settlement-sensors.md` (courtesy of @ciechompl).
+
+### Changed
+- PL: Sensory energii pobranej/wprowadzonej i okresu rozliczeniowego pochodzą wyłącznie z rzeczywistych faktur (`INVOICE`) — prognozy (`PREPAYMENT_INVOICE`) nie zastępują już pomiarów.
+- EN: Consumed/fed-in energy and billing period sensors now come only from actual invoices (`INVOICE`) — forecasts (`PREPAYMENT_INVOICE`) no longer replace measured values.
+- PL: `PGE Magazyn energii` pokazuje sumę dostępnej energii ze stref S1/S2 po zastosowaniu współczynnika PGE, zamiast surowego salda pierwszej strefy.
+- EN: `PGE Magazyn energii` now shows the sum of available energy across zones S1/S2 after applying PGE's factor, instead of the raw balance of the first zone.
+- PL: Dla kont, które PGE jawnie oznacza jako nieprosumenckie, sensory energii wprowadzonej i banku są domyślnie wyłączone.
+- EN: For accounts PGE explicitly reports as non-prosumer, fed-in energy and bank sensors are disabled by default.
+- PL: Sensory energii z pojedynczej faktury, prognozy i banku nie mają już `state_class` — nie są licznikami kumulacyjnymi.
+- EN: Single-invoice energy, forecast and bank sensors no longer have a `state_class` — they are not cumulative counters.
+
+### Deprecated
+- PL: Sensor „Zużycie po rozliczeniu” jest wyłączany przez integrację (wartość była błędnie wystawiana w kWh, a jest kwotą w PLN). Zastępuje go sensor „Wartość rozliczenia energii”. Historia i wpis encji nie są usuwane.
+- EN: The "Zużycie po rozliczeniu" sensor is disabled by the integration (its value was wrongly exposed as kWh while it is a PLN amount). It is replaced by the "energy settlement value" sensor. Its history and registry entry are not removed.
+
 ## [1.5.1] - 2026-08-13
 
 ### Fixed
