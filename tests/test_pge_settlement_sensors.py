@@ -30,6 +30,10 @@ class Registry:
     def async_update_entity(self, entity_id, **kwargs):
         entry=next(x for x in self.entries if x.entity_id==entity_id)
         for k,v in kwargs.items():setattr(entry,k,v)
+    def async_get_entity_id(self, domain, platform, unique_id):
+        return next((x.entity_id for x in self.entries if x.unique_id==unique_id), None)
+    def async_remove(self, entity_id):
+        self.entries=[x for x in self.entries if x.entity_id!=entity_id]
 
 def module(name, **members):
     m=types.ModuleType(name)
@@ -40,12 +44,19 @@ stubs={
     'homeassistant': module('homeassistant'),
     'homeassistant.components': module('homeassistant.components'),
     'homeassistant.components.sensor': module('homeassistant.components.sensor', SensorEntity=SensorEntity,
-        SensorDeviceClass=types.SimpleNamespace(MONETARY='monetary', ENERGY='energy', DATE='date'),
-        SensorStateClass=types.SimpleNamespace(TOTAL='total', TOTAL_INCREASING='total_increasing')),
+        SensorDeviceClass=types.SimpleNamespace(MONETARY='monetary', ENERGY='energy', DATE='date',
+            ENERGY_STORAGE='energy_storage'),
+        SensorStateClass=types.SimpleNamespace(TOTAL='total', TOTAL_INCREASING='total_increasing',
+            MEASUREMENT='measurement')),
     'homeassistant.config_entries': module('homeassistant.config_entries', ConfigEntry=object),
-    'homeassistant.const': module('homeassistant.const', CONF_USERNAME='username', CONF_PASSWORD='password'),
-    'homeassistant.core': module('homeassistant.core', HomeAssistant=object, callback=lambda fn:fn),
+    'homeassistant.const': module('homeassistant.const', CONF_USERNAME='username', CONF_PASSWORD='password',
+        ATTR_UNIT_OF_MEASUREMENT='unit_of_measurement',
+        UnitOfEnergy=types.SimpleNamespace(KILO_WATT_HOUR='kWh')),
+    'homeassistant.core': module('homeassistant.core', HomeAssistant=object, Event=object, callback=lambda fn:fn),
+    'homeassistant.exceptions': module('homeassistant.exceptions', HomeAssistantError=Exception),
     'homeassistant.helpers': module('homeassistant.helpers'),
+    'homeassistant.helpers.event': module('homeassistant.helpers.event',
+        async_track_state_change_event=None, async_track_time_interval=None),
     'homeassistant.helpers.entity': module('homeassistant.helpers.entity', DeviceInfo=dict),
     'homeassistant.helpers.entity_registry': module('homeassistant.helpers.entity_registry',
         async_get=lambda hass:hass.registry,
@@ -53,7 +64,8 @@ stubs={
         RegistryEntryDisabler=Disabler),
     'homeassistant.helpers.entity_platform': module('homeassistant.helpers.entity_platform', AddEntitiesCallback=object),
     'homeassistant.helpers.update_coordinator': module('homeassistant.helpers.update_coordinator', CoordinatorEntity=CoordinatorEntity),
-    'homeassistant.util': module('homeassistant.util', slugify=lambda value:value),
+    'homeassistant.util': module('homeassistant.util', slugify=lambda value:value, dt=None),
+    'homeassistant.util.unit_conversion': module('homeassistant.util.unit_conversion', EnergyConverter=None),
     PACKAGE+'.coordinator': module(PACKAGE+'.coordinator', PgeEbokCoordinator=object),
 }
 spec=importlib.util.spec_from_file_location(PACKAGE+'.sensor',ROOT/'sensor.py')
@@ -112,7 +124,7 @@ class SensorTests(unittest.TestCase):
     def setup(self, prosument, registry=()):
         registry=Registry(registry)
         hass=types.SimpleNamespace(config_entries=types.SimpleNamespace(async_entries=lambda domain:[types.SimpleNamespace(disabled_by=None)]),registry=registry,data={'pge_sensor':{'test':types.SimpleNamespace(data=data(prosument=prosument),last_update_success=True)}})
-        entry=types.SimpleNamespace(entry_id='test',data={'username':'test','account_id':1},title='Test')
+        entry=types.SimpleNamespace(entry_id='test',data={'username':'test','account_id':1},title='Test',options={})
         added=[];asyncio.run(sensors.async_setup_entry(hass,entry,added.extend))
         return added,registry
 

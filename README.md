@@ -29,6 +29,7 @@ Integracja tworzy następujące sensory dla każdego skonfigurowanego Punktu Pob
 | `sensor.pge_settled_energy` | **PGE Zużycie po rozliczeniu** - faktyczna ilość energii po zbilansowaniu. | kWh |
 | `sensor.pge_magazyn_energii` | **PGE Magazyn energii** - pozostała do rozliczenia energia (historia w atrybutach). | kWh |
 | `sensor.pge_okres_rozliczeniowy` | **PGE Okres rozliczeniowy** - przedział dat dla najnowszej faktury. | tekst |
+| `sensor.pge_magazyn_biezacy` | **PGE Magazyn energii — bieżący z licznika** - stan banku energii na dziś, wyliczony z Twoich liczników (tylko gdy podasz liczniki, patrz niżej). | kWh |
 
 Koordynator aktualizuje dane co 8 godzin, a w przypadku błędu (np. przerwa techniczna eBOK) ponawia próby co 30 minut.
 
@@ -61,6 +62,24 @@ Lub ręcznie:
 2. Wyszukaj **PGE Sensor**.
 3. Podaj swoje dane logowania do serwisu eBOK.
 4. Jeśli konto posiada wiele punktów poboru, instalator zapyta, czy chcesz dodać wszystkie naraz, czy tylko wybrany. Aby w przyszłości dodać kolejny, uruchom konfigurację ponownie z tymi samymi danymi.
+5. Opcjonalnie wskaż liczniki energii pobranej i oddanej (patrz niżej). Można je dodać lub zmienić później przyciskiem **Konfiguruj** przy integracji.
+
+### Bieżący magazyn energii z licznika
+
+PGE pokazuje bank energii tylko na dzień ostatniego rzeczywistego rozliczenia. Jeśli wskażesz liczniki energii pobranej i oddanej (np. z licznika dwukierunkowego, falownika lub Shelly), integracja doliczy do tego banku Twoje odczyty od dnia po zakończeniu rozliczonego okresu:
+
+- energia oddana w danym miesiącu trafia do banku po przemnożeniu przez współczynnik opustu PGE (np. 0,8),
+- pobór zużywa najpierw najstarsze partie energii,
+- partie wygasają po 12 miesiącach,
+- gdy w banku zabraknie energii, wartość staje się ujemna (energia do zapłaty) i jest spłacana z kolejnych oddań.
+
+Wymagania:
+
+- oba liczniki muszą być narastającymi sensorami energii (`device_class: energy`, `state_class: total_increasing` lub `total`) z historią w statystykach długoterminowych — takie, jakie można wybrać w panelu Energia,
+- statystyki muszą sięgać początku bieżącego okresu (dnia po końcu ostatniego rozliczenia); bez tego sensor jest niedostępny, a w logu pojawia się ostrzeżenie,
+- obsługiwane są taryfy jednostrefowe (np. G11); przy koncie z bankiem w dwóch strefach sensor pozostaje niedostępny.
+
+Odczyty z początku każdego miesiąca pobierane są ze statystyk co godzinę, a wartość przeliczana jest przy każdej zmianie stanu licznika. W atrybutach sensora znajdziesz m.in. pobór i oddanie od początku okresu, deficyt, energię, która wygasła, oraz listę partii z datą wygaśnięcia (`partie`, `najblizsze_wygasniecie`).
 
 ## Rozwiązywanie problemów
 

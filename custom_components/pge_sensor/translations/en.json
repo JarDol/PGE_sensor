@@ -1,0 +1,61 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "PGE eBOK login",
+        "data": {
+          "username": "Login (e-mail)",
+          "password": "Password"
+        }
+      },
+      "select_point": {
+        "title": "Select billing account",
+        "data": {
+          "point": "Billing account"
+        }
+      },
+      "meters": {
+        "title": "Energy meters (optional)",
+        "description": "Account: {account}\n\nPick your grid import and export meters to get the current energy bank: PGE's last settled bank projected with your readings (opust factor, 12-month expiry). Leave empty to skip this sensor — you can change it later in the options.",
+        "data": {
+          "meter_import_entity": "Grid import energy meter",
+          "meter_export_entity": "Grid export energy meter"
+        },
+        "data_description": {
+          "meter_import_entity": "Cumulative kWh meter (e.g. bidirectional meter or inverter) with long-term statistics.",
+          "meter_export_entity": "Cumulative kWh meter of energy fed into the grid."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid login or password.",
+      "cannot_connect": "Could not connect to PGE. Try again later.",
+      "unknown": "Unexpected error.",
+      "meters_incomplete": "Pick both meters or neither.",
+      "meters_identical": "Import and export meters must be different sensors."
+    },
+    "abort": {
+      "already_configured": "This account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Energy meters",
+        "description": "Meters used to compute the current energy bank. Clear both to remove that sensor.",
+        "data": {
+          "meter_import_entity": "Grid import energy meter",
+          "meter_export_entity": "Grid export energy meter"
+        },
+        "data_description": {
+          "meter_import_entity": "Cumulative kWh meter (e.g. bidirectional meter or inverter) with long-term statistics.",
+          "meter_export_entity": "Cumulative kWh meter of energy fed into the grid."
+        }
+      }
+    },
+    "error": {
+      "meters_incomplete": "Pick both meters or neither.",
+      "meters_identical": "Import and export meters must be different sensors."
+    }
+  }
+}

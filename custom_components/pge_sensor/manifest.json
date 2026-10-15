@@ -8,6 +8,7 @@
     "@procaktomasz"
   ],
   "requirements": ["beautifulsoup4", "requests"],
+  "after_dependencies": ["recorder"],
   "config_flow": true,
   "iot_class": "cloud_polling"
 }

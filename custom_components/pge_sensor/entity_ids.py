@@ -11,6 +11,7 @@ SENSOR_KEYS = {
     "feed_in_energy": "energia_wprowadzona",
     "settled_energy": "zuzycie_po_rozliczeniu",
     "energy_storage": "magazyn_energii",
+    "meter_bank": "magazyn_biezacy",
     "billing_period": "okres_rozliczeniowy",
     "current_payment": "biezaca_platnosc",
     "due_date": "termin_platnosci",

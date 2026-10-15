@@ -1,0 +1,61 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Logowanie do eBOK PGE",
+        "data": {
+          "username": "Login (e-mail)",
+          "password": "Hasło"
+        }
+      },
+      "select_point": {
+        "title": "Wybór konta rozliczeniowego",
+        "data": {
+          "point": "Konto rozliczeniowe"
+        }
+      },
+      "meters": {
+        "title": "Liczniki energii (opcjonalnie)",
+        "description": "Konto: {account}\n\nPodaj liczniki energii pobranej i oddanej, aby integracja liczyła bieżący stan magazynu energii: bank z ostatniego rozliczenia PGE uzupełniany Twoimi odczytami (opust, wygasanie po 12 miesiącach). Pozostaw puste, jeśli nie chcesz tego sensora — można to zmienić później w opcjach.",
+        "data": {
+          "meter_import_entity": "Licznik energii pobranej z sieci",
+          "meter_export_entity": "Licznik energii oddanej do sieci"
+        },
+        "data_description": {
+          "meter_import_entity": "Narastający licznik kWh (np. z licznika dwukierunkowego lub falownika) z historią w statystykach długoterminowych.",
+          "meter_export_entity": "Narastający licznik kWh energii wprowadzonej do sieci."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Nieprawidłowy login lub hasło.",
+      "cannot_connect": "Nie udało się połączyć z PGE. Spróbuj ponownie później.",
+      "unknown": "Nieoczekiwany błąd.",
+      "meters_incomplete": "Podaj oba liczniki albo żadnego.",
+      "meters_identical": "Licznik energii pobranej i oddanej musi być innym sensorem."
+    },
+    "abort": {
+      "already_configured": "To konto jest już skonfigurowane."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Liczniki energii",
+        "description": "Liczniki używane do wyliczania bieżącego stanu magazynu energii. Usuń oba, aby wyłączyć ten sensor.",
+        "data": {
+          "meter_import_entity": "Licznik energii pobranej z sieci",
+          "meter_export_entity": "Licznik energii oddanej do sieci"
+        },
+        "data_description": {
+          "meter_import_entity": "Narastający licznik kWh (np. z licznika dwukierunkowego lub falownika) z historią w statystykach długoterminowych.",
+          "meter_export_entity": "Narastający licznik kWh energii wprowadzonej do sieci."
+        }
+      }
+    },
+    "error": {
+      "meters_incomplete": "Podaj oba liczniki albo żadnego.",
+      "meters_identical": "Licznik energii pobranej i oddanej musi być innym sensorem."
+    }
+  }
+}

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+- PL: Opcjonalne liczniki energii pobranej i oddanej w konfiguracji integracji (także później, w opcjach). Po ich wskazaniu pojawia się sensor `PGE Magazyn energii — bieżący z licznika` — bank z ostatniego rozliczenia PGE uzupełniany odczytami ze statystyk długoterminowych: opust, zużycie partii od najstarszej, wygasanie po 12 miesiącach i deficyt jako wartość ujemna. Obsługiwane są taryfy jednostrefowe.
+- EN: Optional grid import and export meters in the integration setup (and later in its options). When set, a `PGE Magazyn energii — bieżący z licznika` sensor projects PGE's last settled bank with readings from long-term statistics: opust factor, oldest-batch-first consumption, 12-month expiry and deficit as a negative value. Single-zone tariffs are supported.
+- PL: Polskie i angielskie tłumaczenia kreatora konfiguracji.
+- EN: Polish and English translations for the config flow.
+
 ## [1.6.0] - 2026-10-14
 
 ### Added

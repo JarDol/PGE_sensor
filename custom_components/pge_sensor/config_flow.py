@@ -6,14 +6,42 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 
 from .api import PgeScraper, PgeScraperError, describe_billing_account
-from .const import CONF_ACCOUNT_ID, DOMAIN
+from .const import CONF_ACCOUNT_ID, CONF_METER_EXPORT, CONF_METER_IMPORT, DOMAIN
 
 ALL_POINTS_KEY = "__all__"
+METER_KEYS = (CONF_METER_IMPORT, CONF_METER_EXPORT)
+
+
+def _meters_schema(current: dict[str, Any]) -> vol.Schema:
+    """Optional meter pickers; suggested values keep the fields clearable."""
+    selector = EntitySelector(
+        EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.ENERGY)
+    )
+    return vol.Schema({
+        vol.Optional(key, description={"suggested_value": current.get(key)}): selector
+        for key in METER_KEYS
+    })
+
+
+def _meters_error(user_input: dict[str, Any]) -> str | None:
+    """The bank projection needs both cumulative meters, or neither."""
+    imported, exported = (user_input.get(key) for key in METER_KEYS)
+    if bool(imported) != bool(exported):
+        return "meters_incomplete"
+    if imported and imported == exported:
+        return "meters_identical"
+    return None
+
+
+def _meters_options(user_input: dict[str, Any]) -> dict[str, str]:
+    return {key: user_input[key] for key in METER_KEYS if user_input.get(key)}
 
 
 async def _async_fetch_accounts(hass: HomeAssistant, data: dict[str, str]) -> list[dict]:
@@ -34,6 +62,13 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._password: str | None = None
         self._accounts: list[dict] = []
         self._available: list[dict] = []
+        self._entry_title: str | None = None
+        self._entry_data: dict[str, Any] = {}
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
+        return PgeOptionsFlow(config_entry)
 
     async def async_step_user(self, user_input: dict[str, str] | None = None) -> FlowResult:
         errors: dict[str, str] = {}
@@ -143,5 +178,46 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if account.get("accountNumber"):
                 data["account_number"] = str(account["accountNumber"])
 
-        title = describe_billing_account(account) if account else self._username
-        return self.async_create_entry(title=title, data=data)
+        self._entry_title = describe_billing_account(account) if account else self._username
+        self._entry_data = data
+        return await self.async_step_meters()
+
+    async def async_step_meters(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Optionally pick the local meters used to project the energy bank."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if error := _meters_error(user_input):
+                errors["base"] = error
+            else:
+                return self.async_create_entry(
+                    title=self._entry_title,
+                    data=self._entry_data,
+                    options=_meters_options(user_input),
+                )
+        return self.async_show_form(
+            step_id="meters",
+            data_schema=_meters_schema(user_input or {}),
+            errors=errors,
+            description_placeholders={"account": self._entry_title or ""},
+        )
+
+
+class PgeOptionsFlow(config_entries.OptionsFlow):
+    """Change the meters without re-adding the account."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        # Not assigned to self.config_entry: setting it is deprecated in newer HA.
+        self._entry = config_entry
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if error := _meters_error(user_input):
+                errors["base"] = error
+            else:
+                return self.async_create_entry(title="", data=_meters_options(user_input))
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_meters_schema(user_input or self._entry.options),
+            errors=errors,
+        )
