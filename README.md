@@ -16,7 +16,7 @@ Integracja Home Assistant oraz skrypt CLI do pobierania informacji o rozliczenia
 
 ## Sensory
 
-Integracja tworzy następujące sensory dla każdego skonfigurowanego Punktu Poboru (PPE):
+Integracja tworzy następujące sensory dla każdego skonfigurowanego Punktu Poboru (PPE). Nazwy encji mają postać `sensor.pge_<numer PPE>_<sensor>`, np. `sensor.pge_590243000000000001_saldo` — patrz [Identyfikatory encji](#identyfikatory-encji). Poniższa tabela pokazuje nazwy z wersji sprzed tej zmiany:
 
 | Sensor | Opis | Wartość |
 |--------|------|---------|
@@ -29,7 +29,7 @@ Integracja tworzy następujące sensory dla każdego skonfigurowanego Punktu Pob
 | `sensor.pge_settled_energy` | **PGE Zużycie po rozliczeniu** - faktyczna ilość energii po zbilansowaniu. | kWh |
 | `sensor.pge_magazyn_energii` | **PGE Magazyn energii** - pozostała do rozliczenia energia (historia w atrybutach). | kWh |
 | `sensor.pge_okres_rozliczeniowy` | **PGE Okres rozliczeniowy** - przedział dat dla najnowszej faktury. | tekst |
-| `sensor.pge_magazyn_biezacy` | **PGE Magazyn energii — bieżący z licznika** - stan banku energii na dziś, wyliczony z Twoich liczników (tylko gdy podasz liczniki, patrz niżej). | kWh |
+| `sensor.pge_<PPE>_magazyn_biezacy` | **PGE Magazyn energii — bieżący z licznika** - stan banku energii na dziś, wyliczony z Twoich liczników (tylko gdy podasz liczniki, patrz niżej). | kWh |
 
 Koordynator aktualizuje dane co 8 godzin, a w przypadku błędu (np. przerwa techniczna eBOK) ponawia próby co 30 minut.
 
@@ -80,6 +80,21 @@ Wymagania:
 - obsługiwane są taryfy jednostrefowe (np. G11); przy koncie z bankiem w dwóch strefach sensor pozostaje niedostępny.
 
 Odczyty z początku każdego miesiąca pobierane są ze statystyk co godzinę, a wartość przeliczana jest przy każdej zmianie stanu licznika. W atrybutach sensora znajdziesz m.in. pobór i oddanie od początku okresu, deficyt, energię, która wygasła, oraz listę partii z datą wygaśnięcia (`partie`, `najblizsze_wygasniecie`).
+
+### Identyfikatory encji
+
+Encje są nazywane według numeru punktu poboru (PPE), a nie numeru konta: `sensor.pge_<PPE>_saldo`, `sensor.pge_<PPE>_magazyn_energii` itd. Numer PPE oznacza fizyczny punkt i nie zmienia się, gdy PGE zmienia numer konta rozliczeniowego. Jeśli konto obejmuje kilka punktów poboru, w nazwie zostaje numer konta.
+
+Przy pierwszym uruchomieniu wersji z tą zmianą istniejące encje są jednorazowo przemianowane na nowy wzorzec. Home Assistant przenosi przy tym historię i statystyki, ale karty i automatyzacje używające starych nazw trzeba poprawić. Późniejsze ręczne zmiany nazw nie są nadpisywane.
+
+### Zmiana konta rozliczeniowego przez PGE
+
+Gdy PGE zarchiwizuje skonfigurowane konto, a ten sam punkt poboru pojawi się na nowym, aktywnym koncie, w **Ustawienia → Naprawy** pojawi się zgłoszenie „PGE zastąpiło konto rozliczeniowe”. Po jego zatwierdzeniu integracja zaczyna pobierać dane z nowego konta, a encje, ich nazwy i cała historia pozostają bez zmian.
+
+- Zanim zatwierdzisz, opłać fakturę końcową starego konta — po przeniesieniu jego saldo nie jest już śledzone.
+- Nowe konto może jeszcze nie mieć faktury rozliczeniowej; do tego czasu sensory rozliczenia i banku mogą być niedostępne.
+- Jeśli nowe konto zostało już dodane jako osobna integracja, usuń ją przed zatwierdzeniem naprawy.
+- Zgłoszenie nie pojawi się, jeśli ten sam punkt jest na kilku aktywnych kontach (nie da się wtedy jednoznacznie wskazać następcy).
 
 ## Rozwiązywanie problemów
 

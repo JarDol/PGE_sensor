@@ -12,8 +12,10 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 
+from .accounts import account_ppes
 from .api import PgeScraper, PgeScraperError, describe_billing_account
 from .const import CONF_ACCOUNT_ID, CONF_METER_EXPORT, CONF_METER_IMPORT, DOMAIN
+from .migration import CONF_ENTITY_SCHEME, CONF_PPE, ENTITY_SCHEME_PPE
 
 ALL_POINTS_KEY = "__all__"
 METER_KEYS = (CONF_METER_IMPORT, CONF_METER_EXPORT)
@@ -42,6 +44,12 @@ def _meters_error(user_input: dict[str, Any]) -> str | None:
 
 def _meters_options(user_input: dict[str, Any]) -> dict[str, str]:
     return {key: user_input[key] for key in METER_KEYS if user_input.get(key)}
+
+
+def _point_data(account: dict) -> dict[str, str]:
+    """New entries start with PPE-based entity IDs; nothing to migrate later."""
+    ppes = account_ppes(account)
+    return {CONF_PPE: ppes[0], CONF_ENTITY_SCHEME: ENTITY_SCHEME_PPE} if len(ppes) == 1 else {}
 
 
 async def _async_fetch_accounts(hass: HomeAssistant, data: dict[str, str]) -> list[dict]:
@@ -134,6 +142,7 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                                 CONF_ACCOUNT_ID: acc["id"],
                                 "label": describe_billing_account(acc),
                                 "account_number": acc.get("accountNumber"),
+                                **_point_data(acc),
                             },
                         )
                     )
@@ -163,6 +172,7 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_PASSWORD: import_data[CONF_PASSWORD],
                 CONF_ACCOUNT_ID: account_id,
                 "account_number": import_data.get("account_number"),
+                **{key: import_data[key] for key in (CONF_PPE, CONF_ENTITY_SCHEME) if key in import_data},
             },
         )
 
@@ -177,6 +187,7 @@ class PgeEbokConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data[CONF_ACCOUNT_ID] = account_id
             if account.get("accountNumber"):
                 data["account_number"] = str(account["accountNumber"])
+            data.update(_point_data(account))
 
         self._entry_title = describe_billing_account(account) if account else self._username
         self._entry_data = data

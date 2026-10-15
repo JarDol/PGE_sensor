@@ -83,3 +83,28 @@ def account_sort_key(account: dict[str, Any]) -> tuple[bool, bool, str]:
         not bool(account.get("defaultAccount")),
         describe_billing_account(account).casefold(),
     )
+
+
+def account_ppes(account: dict[str, Any]) -> list[str]:
+    """Distinct PPE numbers of the supply points billed on this account."""
+    numbers = (point.get("number") or point.get("ppmNumber") for point in account.get("ppms") or [])
+    return list(dict.fromkeys(str(number) for number in numbers if number))
+
+
+def find_successor(
+    accounts: list[dict[str, Any]], account_id: Any, ppe: str
+) -> dict[str, Any] | None:
+    """The active account that took over this PPE after PGE archived ours.
+
+    Returns nothing while our account is still active, or when the takeover
+    is ambiguous (several active accounts for the same point).
+    """
+    current = next((acc for acc in accounts if str(acc.get("id")) == str(account_id)), None)
+    if current is not None and not current.get("archived"):
+        return None
+    candidates = [
+        acc for acc in accounts
+        if not acc.get("archived") and str(acc.get("id")) != str(account_id)
+        and ppe in account_ppes(acc)
+    ]
+    return candidates[0] if len(candidates) == 1 else None

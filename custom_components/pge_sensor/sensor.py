@@ -23,7 +23,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util, slugify
 from homeassistant.util.unit_conversion import EnergyConverter
 
-from .entity_ids import account_number_for_entry, default_entity_id
+from .entity_ids import default_entity_id, entry_identifier
 from .const import CONF_ACCOUNT_ID, CONF_METER_EXPORT, CONF_METER_IMPORT, DOMAIN
 from .local_bank import DEFAULT_FACTOR, projection_start, reading_days, simulate_bank
 from .settlement import bank_total, bank_zones
@@ -100,15 +100,11 @@ async def async_setup_entry(
         # Meters were removed from the options; drop the orphaned projection.
         registry.async_remove(entity_id)
 
-    multiple_accounts = sum(
-        item.disabled_by is None for item in hass.config_entries.async_entries(DOMAIN)
-    ) > 1
-    account_number = account_number_for_entry(entry.data, entry.title)
+    # New entities only; the registry keeps IDs of existing ones.
+    identifier = entry_identifier(entry.data, entry.title)
     for entity in entities:
         key = entity.unique_id.removeprefix(f"{slug}_")
-        entity.entity_id = default_entity_id(
-            account_number, key, multiple_accounts=multiple_accounts
-        )
+        entity.entity_id = default_entity_id(identifier, key)
 
     async_add_entities(entities)
 

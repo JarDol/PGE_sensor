@@ -33,10 +33,31 @@ def account_number_for_entry(data: dict[str, Any], title: str) -> str | None:
     return internal if internal.isdecimal() else None
 
 
-def default_entity_id(
-    account_number: str | None, key: str, *, multiple_accounts: bool = True
-) -> str:
+def ppe_for_entry(
+    data: dict[str, Any], title: str, candidates: list[str] | tuple[str, ...] = ()
+) -> str | None:
+    """The supply point outlives billing accounts, so it anchors entity IDs.
+
+    Prefer the stored PPE, then the single PPE named in the account title,
+    then the single PPE reported by PGE. Accounts covering several points
+    have no single PPE.
+    """
+    stored = str(data.get("ppe") or "")
+    if stored:
+        return stored
+    for found in (re.findall(r"PPE\s+([0-9A-Za-z]+)", title), candidates):
+        unique = set(map(str, filter(None, found)))
+        if len(unique) == 1:
+            return unique.pop()
+    return None
+
+
+def entry_identifier(data: dict[str, Any], title: str) -> str | None:
+    return ppe_for_entry(data, title) or account_number_for_entry(data, title)
+
+
+def default_entity_id(identifier: str | None, key: str) -> str:
     """Suggest IDs; HA's entity registry retains existing/manual entity IDs."""
     suffix = SENSOR_KEYS.get(key, key)
-    prefix = f"pge_{account_number}" if multiple_accounts and account_number else "pge"
-    return f"sensor.{prefix}_{suffix}"
+    token = re.sub(r"[^0-9a-z]+", "_", str(identifier or "").lower()).strip("_")
+    return f"sensor.pge_{token}_{suffix}" if token else f"sensor.pge_{suffix}"

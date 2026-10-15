@@ -57,5 +57,23 @@
       "meters_incomplete": "Podaj oba liczniki albo żadnego.",
       "meters_identical": "Licznik energii pobranej i oddanej musi być innym sensorem."
     }
+  },
+  "issues": {
+    "account_replaced": {
+      "title": "PGE zastąpiło konto rozliczeniowe dla PPE {ppe}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Przenieść na nowe konto?",
+            "description": "Konto **{old_account}** ({title}) zostało zarchiwizowane, a punkt poboru PPE {ppe} jest teraz rozliczany na koncie **{new_account}**.\n\nPo przeniesieniu integracja będzie pobierać dane z nowego konta. Encje, ich nazwy i cała historia pozostaną bez zmian.\n\nZanim przeniesiesz: sprawdź, czy faktura końcowa starego konta jest opłacona — po przeniesieniu saldo starego konta nie będzie już śledzone. Nowe konto może jeszcze nie mieć faktury rozliczeniowej; do tego czasu sensory rozliczenia i banku energii mogą być niedostępne."
+          }
+        },
+        "abort": {
+          "entry_not_loaded": "Integracja nie jest załadowana. Uruchom ją ponownie i spróbuj jeszcze raz.",
+          "account_unavailable": "Nowe konto nie jest już widoczne w PGE. Spróbuj ponownie po kolejnym odświeżeniu danych.",
+          "new_account_configured": "Nowe konto jest już dodane jako osobna integracja („{other}”). Usuń ją, a następnie wróć do tej naprawy — historia zostanie zachowana w obecnych encjach."
+        }
+      }
+    }
   }
 }

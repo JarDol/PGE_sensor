@@ -98,5 +98,34 @@ class AccountLabelTests(unittest.TestCase):
         self.assertIn("konto 123", label)
 
 
+def account(id, ppe, archived=False):
+    return {"id": id, "accountNumber": str(id), "archived": archived, "ppms": [{"number": ppe}]}
+
+
+class SuccessorTests(unittest.TestCase):
+    def test_active_account_has_no_successor(self):
+        accounts_list = [account(1, "P"), account(2, "P")]
+        self.assertIsNone(accounts.find_successor(accounts_list, 1, "P"))
+
+    def test_archived_account_is_taken_over_on_same_point(self):
+        accounts_list = [account(1, "P", archived=True), account(2, "P"), account(3, "Q")]
+        self.assertEqual(accounts.find_successor(accounts_list, 1, "P")["id"], 2)
+
+    def test_vanished_account_is_taken_over(self):
+        self.assertEqual(accounts.find_successor([account(2, "P")], "1", "P")["id"], 2)
+
+    def test_other_points_and_archived_accounts_are_not_successors(self):
+        accounts_list = [account(1, "P", archived=True), account(2, "Q"), account(3, "P", archived=True)]
+        self.assertIsNone(accounts.find_successor(accounts_list, 1, "P"))
+
+    def test_ambiguous_takeover_is_not_guessed(self):
+        accounts_list = [account(1, "P", archived=True), account(2, "P"), account(3, "P")]
+        self.assertIsNone(accounts.find_successor(accounts_list, 1, "P"))
+
+    def test_account_ppes_are_distinct(self):
+        acc = {"ppms": [{"number": "1"}, {"ppmNumber": "1"}, {"number": "2"}, {}]}
+        self.assertEqual(accounts.account_ppes(acc), ["1", "2"])
+
+
 if __name__ == "__main__":
     unittest.main()

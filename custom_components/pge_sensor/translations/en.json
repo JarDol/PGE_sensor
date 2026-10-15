@@ -57,5 +57,23 @@
       "meters_incomplete": "Pick both meters or neither.",
       "meters_identical": "Import and export meters must be different sensors."
     }
+  },
+  "issues": {
+    "account_replaced": {
+      "title": "PGE replaced the billing account for PPE {ppe}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Move to the new account?",
+            "description": "Account **{old_account}** ({title}) was archived and supply point PPE {ppe} is now billed on account **{new_account}**.\n\nAfter the move the integration reads the new account. Entities, their IDs and all history stay unchanged.\n\nBefore moving: make sure the final invoice of the old account is paid — its balance will no longer be tracked. The new account may not have a settlement invoice yet; until then settlement and energy bank sensors may be unavailable."
+          }
+        },
+        "abort": {
+          "entry_not_loaded": "The integration is not loaded. Reload it and try again.",
+          "account_unavailable": "The new account is no longer listed by PGE. Try again after the next refresh.",
+          "new_account_configured": "The new account is already added as a separate integration (\"{other}\"). Remove it, then come back to this repair — history is kept in the current entities."
+        }
+      }
+    }
   }
 }

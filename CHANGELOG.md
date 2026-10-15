@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+- PL: Wykrywanie zmiany konta rozliczeniowego przez PGE. Gdy skonfigurowane konto zostanie zarchiwizowane, a jego punkt poboru (PPE) przejdzie na nowe konto, w **Ustawienia → Naprawy** pojawia się zgłoszenie. Po jego zatwierdzeniu integracja pobiera dane z nowego konta, zachowując encje, ich nazwy i historię.
+- EN: Detects PGE replacing a billing account. When the configured account is archived and its supply point (PPE) moves to a new account, a repair appears in **Settings → Repairs**. Confirming it switches the integration to the new account while keeping entities, their IDs and history.
+
+### Changed
+- PL: **Zmiana nazw encji:** encje mają teraz postać `sensor.pge_<numer PPE>_<sensor>` niezależnie od liczby kont (przy koncie z kilkoma punktami poboru — numer konta). Istniejące encje są jednorazowo przemianowane; Home Assistant przenosi ich historię i statystyki, ale karty i automatyzacje trzeba zaktualizować.
+- EN: **Entity IDs renamed:** entities are now `sensor.pge_<PPE number>_<sensor>` regardless of how many accounts are configured (account number for accounts covering several points). Existing entities are renamed once; Home Assistant moves their history and statistics, but dashboards and automations must be updated.
+
 ## [1.7.0] - 2026-10-15
 
 ### Added

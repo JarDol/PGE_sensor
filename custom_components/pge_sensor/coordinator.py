@@ -28,6 +28,8 @@ class PgeEbokCoordinator(DataUpdateCoordinator[BalanceInfo]):
         self._api = PgeScraper(username, password, timeout=DEFAULT_TIMEOUT)
         self._username = username
         self._account_id = account_id
+        # Billing accounts as of the last refresh; None until PGE answers once.
+        self.accounts: list[dict] | None = None
         name = f"PGE Sensor ({username})" if account_id is None else f"PGE Sensor ({username} / {account_id})"
         super().__init__(
             hass,
@@ -40,13 +42,19 @@ class PgeEbokCoordinator(DataUpdateCoordinator[BalanceInfo]):
         try:
             data = await self.hass.async_add_executor_job(self._api.get_balance_details, self._account_id)
             self._ensure_interval(SCAN_INTERVAL)
-            return data
         except PgeScraperError as err:
             self._ensure_interval(RETRY_INTERVAL)
             raise UpdateFailed(str(err)) from err
         except Exception as err:  # pragma: no cover - defensive guard
             self._ensure_interval(RETRY_INTERVAL)
             raise UpdateFailed(f"Unexpected coordinator error: {err}") from err
+        if self._account_id is not None:
+            # Only used to notice PGE archiving this account; never fails the update.
+            try:
+                self.accounts = await self.hass.async_add_executor_job(self._api.get_billing_accounts)
+            except (PgeScraperError, ValueError) as err:
+                _LOGGER.debug("Billing account list unavailable: %s", err)
+        return data
 
     @property
     def username(self) -> str:
