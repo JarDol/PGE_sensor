@@ -10,15 +10,28 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
+from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .accounts import account_ppes
 from .api import PgeScraper, PgeScraperError, describe_billing_account
-from .const import CONF_ACCOUNT_ID, CONF_METER_EXPORT, CONF_METER_IMPORT, DOMAIN
+from .const import (
+    CONF_ACCOUNT_ID, CONF_METER_EXPORT, CONF_METER_IMPORT, CONF_OPUST_FACTOR, CONF_PRECISION, DOMAIN,
+)
+from .local_bank import DEFAULT_STEP
 from .migration import CONF_ENTITY_SCHEME, CONF_PPE, ENTITY_SCHEME_PPE
 
 ALL_POINTS_KEY = "__all__"
 METER_KEYS = (CONF_METER_IMPORT, CONF_METER_EXPORT)
+PRECISIONS = ("0.01", "0.1", "0.5", "1")
 
 
 def _meters_schema(current: dict[str, Any]) -> vol.Schema:
@@ -26,10 +39,19 @@ def _meters_schema(current: dict[str, Any]) -> vol.Schema:
     selector = EntitySelector(
         EntitySelectorConfig(domain="sensor", device_class=SensorDeviceClass.ENERGY)
     )
-    return vol.Schema({
+    schema: dict[Any, Any] = {
         vol.Optional(key, description={"suggested_value": current.get(key)}): selector
         for key in METER_KEYS
-    })
+    }
+    precision = f"{float(current.get(CONF_PRECISION, DEFAULT_STEP)):g}"
+    schema[vol.Required(CONF_PRECISION, default=precision if precision in PRECISIONS else "0.1")] = (
+        SelectSelector(SelectSelectorConfig(
+            options=list(PRECISIONS), mode=SelectSelectorMode.DROPDOWN,
+            translation_key=CONF_PRECISION)))
+    # Empty means: use the factor reported by PGE, or 0.8 when PGE has none.
+    schema[vol.Optional(CONF_OPUST_FACTOR, description={"suggested_value": current.get(CONF_OPUST_FACTOR)})] = (
+        NumberSelector(NumberSelectorConfig(min=0.1, max=1, step=0.01, mode=NumberSelectorMode.BOX)))
+    return vol.Schema(schema)
 
 
 def _meters_error(user_input: dict[str, Any]) -> str | None:
@@ -42,8 +64,12 @@ def _meters_error(user_input: dict[str, Any]) -> str | None:
     return None
 
 
-def _meters_options(user_input: dict[str, Any]) -> dict[str, str]:
-    return {key: user_input[key] for key in METER_KEYS if user_input.get(key)}
+def _meters_options(user_input: dict[str, Any]) -> dict[str, Any]:
+    options: dict[str, Any] = {key: user_input[key] for key in METER_KEYS if user_input.get(key)}
+    options[CONF_PRECISION] = float(user_input.get(CONF_PRECISION, DEFAULT_STEP))
+    if user_input.get(CONF_OPUST_FACTOR) is not None:
+        options[CONF_OPUST_FACTOR] = float(user_input[CONF_OPUST_FACTOR])
+    return options
 
 
 def _point_data(account: dict) -> dict[str, str]:

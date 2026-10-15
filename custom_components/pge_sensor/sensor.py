@@ -24,8 +24,10 @@ from homeassistant.util import dt as dt_util, slugify
 from homeassistant.util.unit_conversion import EnergyConverter
 
 from .entity_ids import default_entity_id, entry_identifier
-from .const import CONF_ACCOUNT_ID, CONF_METER_EXPORT, CONF_METER_IMPORT, DOMAIN
-from .local_bank import DEFAULT_FACTOR, projection_start, reading_days, simulate_bank
+from .const import (
+    CONF_ACCOUNT_ID, CONF_METER_EXPORT, CONF_METER_IMPORT, CONF_OPUST_FACTOR, CONF_PRECISION, DOMAIN,
+)
+from .local_bank import DEFAULT_FACTOR, DEFAULT_STEP, projection_start, reading_days, simulate_bank
 from .settlement import bank_total, bank_zones
 from .coordinator import PgeEbokCoordinator
 
@@ -95,7 +97,10 @@ async def async_setup_entry(
 
     meters = (entry.options.get(CONF_METER_IMPORT), entry.options.get(CONF_METER_EXPORT))
     if all(meters):
-        entities.append(PgeMeterBankSensor(coordinator, slug, username, device_name, meters))
+        entities.append(PgeMeterBankSensor(
+            coordinator, slug, username, device_name, meters,
+            step=entry.options.get(CONF_PRECISION, DEFAULT_STEP),
+            factor=entry.options.get(CONF_OPUST_FACTOR)))
     elif entity_id := registry.async_get_entity_id("sensor", DOMAIN, f"{slug}_meter_bank"):
         # Meters were removed from the options; drop the orphaned projection.
         registry.async_remove(entity_id)
@@ -518,9 +523,16 @@ class PgeMeterBankSensor(PgeBaseSensor):
     _attr_icon = "mdi:home-battery"
     _attr_name = "PGE Magazyn energii — bieżący z licznika"
 
-    def __init__(self, coordinator, slug, username, device_name, meters: tuple[str, str]) -> None:
+    def __init__(
+        self, coordinator, slug, username, device_name, meters: tuple[str, str],
+        *, step: float = DEFAULT_STEP, factor: float | None = None,
+    ) -> None:
         super().__init__(coordinator, slug, username, device_name)
         self._meters = meters
+        self._step = step
+        self._factor_override = factor
+        # Show exactly the configured step: 0.01 -> 2 decimals, 0.5 -> 1, 1 -> 0.
+        self._attr_suggested_display_precision = len(f"{step:g}".partition(".")[2])
         self._start: date | None = None
         self._readings: list[tuple[date, float, float]] = []
         self._result: dict[str, Any] | None = None
@@ -596,12 +608,20 @@ class PgeMeterBankSensor(PgeBaseSensor):
             return None, None  # meter momentarily unavailable; not worth a warning
 
         zone = bank_zones(data.energy_storage).get("Strefa 1") or {}
-        factor = zone.get("factor") or DEFAULT_FACTOR
+        if self._factor_override:
+            factor, source = self._factor_override, "ręczny"
+        elif zone.get("factor"):
+            factor, source = zone["factor"], "PGE"
+        else:
+            factor, source = DEFAULT_FACTOR, "domyślny"
         today = dt_util.now().date()
         result = simulate_bank(zone.get("history") or [], factor,
-                               [*self._readings, (today, current[0], current[1])], today)
+                               [*self._readings, (today, current[0], current[1])], today, self._step)
         settled = bank_total(data.energy_storage)
         result.update({
+            "factor_zrodlo": source,
+            "factor_pge": zone.get("factor"),
+            "dokladnosc": self._step,
             "liczone_od": self._start.isoformat(),
             "bank_z_rozliczenia": round(settled, 1) if settled is not None else None,
             "licznik_pobrana": self._meters[0],

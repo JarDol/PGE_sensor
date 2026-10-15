@@ -19,11 +19,15 @@
         "description": "Konto: {account}\n\nPodaj liczniki energii pobranej i oddanej, aby integracja liczyła bieżący stan magazynu energii: bank z ostatniego rozliczenia PGE uzupełniany Twoimi odczytami (opust, wygasanie po 12 miesiącach). Pozostaw puste, jeśli nie chcesz tego sensora — można to zmienić później w opcjach.",
         "data": {
           "meter_import_entity": "Licznik energii pobranej z sieci",
-          "meter_export_entity": "Licznik energii oddanej do sieci"
+          "meter_export_entity": "Licznik energii oddanej do sieci",
+          "precision": "Dokładność magazynu bieżącego",
+          "opust_factor": "Współczynnik opustu (nadpisanie)"
         },
         "data_description": {
           "meter_import_entity": "Narastający licznik kWh (np. z licznika dwukierunkowego lub falownika) z historią w statystykach długoterminowych.",
-          "meter_export_entity": "Narastający licznik kWh energii wprowadzonej do sieci."
+          "meter_export_entity": "Narastający licznik kWh energii wprowadzonej do sieci.",
+          "precision": "Krok zaokrąglenia stanu i atrybutów energii. Większy krok = rzadsze aktualizacje sensora i mniej wpisów w bazie.",
+          "opust_factor": "Puste = współczynnik podany przez PGE w ostatnim rozliczeniu, a gdy go brak — 0,8. Typowo 0,8 dla instalacji do 10 kW, 0,7 dla 10–50 kW."
         }
       }
     },
@@ -41,15 +45,19 @@
   "options": {
     "step": {
       "init": {
-        "title": "Liczniki energii",
-        "description": "Liczniki używane do wyliczania bieżącego stanu magazynu energii. Usuń oba, aby wyłączyć ten sensor.",
+        "title": "Magazyn energii z licznika",
+        "description": "Liczniki i ustawienia bieżącego magazynu energii. Usuń oba liczniki, aby wyłączyć ten sensor.",
         "data": {
           "meter_import_entity": "Licznik energii pobranej z sieci",
-          "meter_export_entity": "Licznik energii oddanej do sieci"
+          "meter_export_entity": "Licznik energii oddanej do sieci",
+          "precision": "Dokładność magazynu bieżącego",
+          "opust_factor": "Współczynnik opustu (nadpisanie)"
         },
         "data_description": {
           "meter_import_entity": "Narastający licznik kWh (np. z licznika dwukierunkowego lub falownika) z historią w statystykach długoterminowych.",
-          "meter_export_entity": "Narastający licznik kWh energii wprowadzonej do sieci."
+          "meter_export_entity": "Narastający licznik kWh energii wprowadzonej do sieci.",
+          "precision": "Krok zaokrąglenia stanu i atrybutów energii. Większy krok = rzadsze aktualizacje sensora i mniej wpisów w bazie.",
+          "opust_factor": "Puste = współczynnik podany przez PGE w ostatnim rozliczeniu, a gdy go brak — 0,8. Typowo 0,8 dla instalacji do 10 kW, 0,7 dla 10–50 kW."
         }
       }
     },
@@ -73,6 +81,16 @@
           "account_unavailable": "Nowe konto nie jest już widoczne w PGE. Spróbuj ponownie po kolejnym odświeżeniu danych.",
           "new_account_configured": "Nowe konto jest już dodane jako osobna integracja („{other}”). Usuń ją, a następnie wróć do tej naprawy — historia zostanie zachowana w obecnych encjach."
         }
+      }
+    }
+  },
+  "selector": {
+    "precision": {
+      "options": {
+        "0.01": "0,01 kWh",
+        "0.1": "0,1 kWh",
+        "0.5": "0,5 kWh",
+        "1": "1 kWh"
       }
     }
   }

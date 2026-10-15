@@ -79,6 +79,11 @@ Wymagania:
 - statystyki muszą sięgać początku bieżącego okresu (dnia po końcu ostatniego rozliczenia); bez tego sensor jest niedostępny, a w logu pojawia się ostrzeżenie,
 - obsługiwane są taryfy jednostrefowe (np. G11); przy koncie z bankiem w dwóch strefach sensor pozostaje niedostępny.
 
+W ustawieniach (kreator lub **Konfiguruj**) można też ustawić:
+
+- **Dokładność** (0,01 / 0,1 / 0,5 / 1 kWh, domyślnie 0,1) — krok zaokrąglenia stanu i atrybutów energii. Sensor zmienia wartość dopiero o pełny krok, więc większy krok oznacza rzadsze aktualizacje i mniej wpisów w bazie.
+- **Współczynnik opustu** — domyślnie puste: używany jest współczynnik podany przez PGE w ostatnim rozliczeniu, a gdy PGE go nie podało — 0,8. Wpisana wartość (np. 0,7 dla instalacji 10–50 kW) zastępuje oba. Atrybut `factor_zrodlo` pokazuje, skąd pochodzi użyty współczynnik (`PGE`, `ręczny`, `domyślny`), a `factor_pge` — wartość od PGE.
+
 Odczyty z początku każdego miesiąca pobierane są ze statystyk co godzinę, a wartość przeliczana jest przy każdej zmianie stanu licznika. W atrybutach sensora znajdziesz m.in. pobór i oddanie od początku okresu, deficyt, energię, która wygasła, oraz listę partii z datą wygaśnięcia (`partie`, `najblizsze_wygasniecie`).
 
 ### Identyfikatory encji

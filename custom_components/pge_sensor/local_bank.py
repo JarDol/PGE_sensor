@@ -14,6 +14,7 @@ from typing import Any
 
 EXPIRY_MONTHS = 12
 DEFAULT_FACTOR = 0.8
+DEFAULT_STEP = 0.1
 _DUST_KWH = 0.0005
 
 
@@ -23,6 +24,11 @@ def month_index(day: date) -> int:
 
 def _month_label(index: int) -> str:
     return f"{index // 12:04d}-{index % 12 + 1:02d}"
+
+
+def quantize(value: float, step: float) -> float:
+    """Round to a multiple of ``step``, e.g. 0.5 kWh: 12.74 -> 12.5."""
+    return round(round(value / step) * step, 6)
 
 
 def _number(value: Any) -> float | None:
@@ -59,8 +65,9 @@ def simulate_bank(
     factor: float,
     readings: list[tuple[date, float, float]],
     today: date,
+    step: float = DEFAULT_STEP,
 ) -> dict[str, Any]:
-    """Return the bank state for today.
+    """Return the bank state for today, every kWh value rounded to ``step``.
 
     ``history`` holds PGE's settled batches (``insertToGridDate`` and raw
     ``leftEnergyAmount``). ``readings`` are cumulative (imported, exported) kWh
@@ -111,18 +118,18 @@ def simulate_bank(
         else:
             active.append({
                 "miesiac": _month_label(int(batch_month)),
-                "kwh": round(amount, 1),
+                "kwh": quantize(amount, step),
                 "wygasa_z_koncem": _month_label(int(batch_month) + EXPIRY_MONTHS),
             })
 
     return {
-        "pozostalo": round(sum(b[1] for b in batches if now - b[0] <= EXPIRY_MONTHS) - deficit, 1),
+        "pozostalo": quantize(sum(b[1] for b in batches if now - b[0] <= EXPIRY_MONTHS) - deficit, step),
         "factor": factor,
-        "pobrana_od_startu": round(imported, 2),
-        "oddana_od_startu": round(exported, 2),
-        "oddana_po_opuscie": round(exported * factor, 2),
-        "deficyt": round(deficit, 1),
-        "wygaslo": round(expired, 1),
+        "pobrana_od_startu": quantize(imported, step),
+        "oddana_od_startu": quantize(exported, step),
+        "oddana_po_opuscie": quantize(exported * factor, step),
+        "deficyt": quantize(deficit, step),
+        "wygaslo": quantize(expired, step),
         "najblizsze_wygasniecie": active[0] if active else None,
         "partie": active,
     }

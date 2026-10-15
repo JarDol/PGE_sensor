@@ -70,6 +70,17 @@ class SimulationTests(unittest.TestCase):
         result = bank.simulate_bank([batch("2025-12-01", 10)], 0.8, readings, date(2026, 1, 9))
         self.assertEqual((result["pozostalo"], result["pobrana_od_startu"]), (8.0, 0.0))
 
+    def test_step_rounds_every_energy_value(self):
+        readings = [(date(2026, 5, 1), 0, 0), (date(2026, 5, 31), 100.3, 500.6)]
+        result = bank.simulate_bank([], 0.8, readings, date(2026, 5, 31), step=0.5)
+        # 500.6 × 0.8 − 100.3 = 300.18 kWh
+        self.assertEqual(result["pozostalo"], 300.0)
+        self.assertEqual(result["pobrana_od_startu"], 100.5)
+        self.assertEqual(result["oddana_od_startu"], 500.5)
+        self.assertEqual(result["partie"][0]["kwh"], 300.0)
+        self.assertEqual(bank.simulate_bank([], 0.8, readings, date(2026, 5, 31), step=1)["pozostalo"], 300.0)
+        self.assertEqual(bank.simulate_bank([], 0.8, readings, date(2026, 5, 31), step=0.01)["pozostalo"], 300.18)
+
     def test_malformed_history_is_ignored(self):
         history = [batch("2025-12-01", "x"), batch("2025-12-01", -3),
                    {"leftEnergyAmount": 10}, batch("2025-12-01", 5)]

@@ -19,11 +19,15 @@
         "description": "Account: {account}\n\nPick your grid import and export meters to get the current energy bank: PGE's last settled bank projected with your readings (opust factor, 12-month expiry). Leave empty to skip this sensor — you can change it later in the options.",
         "data": {
           "meter_import_entity": "Grid import energy meter",
-          "meter_export_entity": "Grid export energy meter"
+          "meter_export_entity": "Grid export energy meter",
+          "precision": "Current bank precision",
+          "opust_factor": "Opust factor (override)"
         },
         "data_description": {
           "meter_import_entity": "Cumulative kWh meter (e.g. bidirectional meter or inverter) with long-term statistics.",
-          "meter_export_entity": "Cumulative kWh meter of energy fed into the grid."
+          "meter_export_entity": "Cumulative kWh meter of energy fed into the grid.",
+          "precision": "Rounding step for the state and energy attributes. A larger step means fewer sensor updates and fewer database rows.",
+          "opust_factor": "Empty = factor reported by PGE in the last settlement, or 0.8 when PGE has none. Typically 0.8 up to 10 kW, 0.7 for 10–50 kW."
         }
       }
     },
@@ -41,15 +45,19 @@
   "options": {
     "step": {
       "init": {
-        "title": "Energy meters",
-        "description": "Meters used to compute the current energy bank. Clear both to remove that sensor.",
+        "title": "Energy bank from meters",
+        "description": "Meters and settings of the current energy bank. Clear both meters to remove that sensor.",
         "data": {
           "meter_import_entity": "Grid import energy meter",
-          "meter_export_entity": "Grid export energy meter"
+          "meter_export_entity": "Grid export energy meter",
+          "precision": "Current bank precision",
+          "opust_factor": "Opust factor (override)"
         },
         "data_description": {
           "meter_import_entity": "Cumulative kWh meter (e.g. bidirectional meter or inverter) with long-term statistics.",
-          "meter_export_entity": "Cumulative kWh meter of energy fed into the grid."
+          "meter_export_entity": "Cumulative kWh meter of energy fed into the grid.",
+          "precision": "Rounding step for the state and energy attributes. A larger step means fewer sensor updates and fewer database rows.",
+          "opust_factor": "Empty = factor reported by PGE in the last settlement, or 0.8 when PGE has none. Typically 0.8 up to 10 kW, 0.7 for 10–50 kW."
         }
       }
     },
@@ -73,6 +81,16 @@
           "account_unavailable": "The new account is no longer listed by PGE. Try again after the next refresh.",
           "new_account_configured": "The new account is already added as a separate integration (\"{other}\"). Remove it, then come back to this repair — history is kept in the current entities."
         }
+      }
+    }
+  },
+  "selector": {
+    "precision": {
+      "options": {
+        "0.01": "0.01 kWh",
+        "0.1": "0.1 kWh",
+        "0.5": "0.5 kWh",
+        "1": "1 kWh"
       }
     }
   }

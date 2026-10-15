@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+- PL: Ustawienie dokładności bieżącego magazynu energii (0,01 / 0,1 / 0,5 / 1 kWh) — krok zaokrąglenia stanu i atrybutów energii, ograniczający liczbę aktualizacji.
+- EN: Precision setting for the current energy bank (0.01 / 0.1 / 0.5 / 1 kWh) — rounding step for the state and energy attributes, reducing the number of updates.
+- PL: Ręczne nadpisanie współczynnika opustu. Domyślnie używany jest współczynnik z rozliczenia PGE, a gdy go brak — 0,8. Nowe atrybuty `factor_zrodlo`, `factor_pge` i `dokladnosc`.
+- EN: Manual override of the opust factor. By default PGE's settlement factor is used, or 0.8 when PGE has none. New attributes `factor_zrodlo`, `factor_pge` and `dokladnosc`.
+
+### Changed
+- PL: Atrybuty energii magazynu bieżącego są zaokrąglane z wybraną dokładnością (domyślnie 0,1 kWh zamiast 0,01 kWh).
+- EN: Energy attributes of the current bank are rounded to the chosen precision (0.1 kWh by default instead of 0.01 kWh).
+
 ## [1.8.0] - 2026-10-15
 
 ### Added
