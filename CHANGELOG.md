@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-15
+
 ### Added
 - PL: Wykrywanie zmiany konta rozliczeniowego przez PGE. Gdy skonfigurowane konto zostanie zarchiwizowane, a jego punkt poboru (PPE) przejdzie na nowe konto, w **Ustawienia → Naprawy** pojawia się zgłoszenie. Po jego zatwierdzeniu integracja pobiera dane z nowego konta, zachowując encje, ich nazwy i historię.
 - EN: Detects PGE replacing a billing account. When the configured account is archived and its supply point (PPE) moves to a new account, a repair appears in **Settings → Repairs**. Confirming it switches the integration to the new account while keeping entities, their IDs and history.
