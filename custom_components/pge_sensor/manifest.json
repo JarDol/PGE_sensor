@@ -1,7 +1,7 @@
 {
   "domain": "pge_sensor",
   "name": "PGE Sensor",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "documentation": "https://github.com/procaktomasz/PGE_sensor",
   "issue_tracker": "https://github.com/procaktomasz/PGE_sensor/issues",
   "codeowners": [

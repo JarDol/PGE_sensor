@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-15
+
 ### Added
 - PL: Ustawienie dokładności bieżącego magazynu energii (0,01 / 0,1 / 0,5 / 1 kWh) — krok zaokrąglenia stanu i atrybutów energii, ograniczający liczbę aktualizacji.
 - EN: Precision setting for the current energy bank (0.01 / 0.1 / 0.5 / 1 kWh) — rounding step for the state and energy attributes, reducing the number of updates.
