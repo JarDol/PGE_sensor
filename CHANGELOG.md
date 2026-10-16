@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file. The format 
 
 ## [Unreleased]
 
+### Added
+- PL: Sensor `PGE Zużycie do zapłaty — bieżący okres` — pobór niepokryty magazynem od początku bieżącego okresu rozliczeniowego, z tego samego wyliczenia co bieżący magazyn. Zeruje się po pojawieniu się nowej faktury. Atrybut `deficyt_od` wskazuje miesiąc wyczerpania magazynu.
+- EN: `PGE Zużycie do zapłaty — bieżący okres` sensor — consumption not covered by the bank since the current billing period began, from the same projection as the current bank. Resets when a new invoice appears. The `deficyt_od` attribute shows the month the bank ran out.
+- PL: Sensor `PGE Zużycie do zapłaty — poprzedni okres` — to samo wyliczenie dla okresu z ostatniej faktury, startujące z magazynu z faktury wcześniejszej, z atrybutami do porównania z fakturą (pobór, oddanie, magazyn na koniec okresu).
+- EN: `PGE Zużycie do zapłaty — poprzedni okres` sensor — the same projection over the latest invoiced period, starting from the earlier invoice's bank, with attributes to compare against the invoice (import, export, bank at period end).
+
+### Changed
+- PL: `PGE Magazyn energii — bieżący z licznika` nie schodzi już poniżej zera; niedobór pokazuje sensor zużycia do zapłaty.
+- EN: `PGE Magazyn energii — bieżący z licznika` no longer goes negative; the shortfall is shown by the energy-to-pay sensor.
+
 ## [1.9.0] - 2026-10-15
 
 ### Added

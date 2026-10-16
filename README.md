@@ -30,6 +30,8 @@ Integracja tworzy następujące sensory dla każdego skonfigurowanego Punktu Pob
 | `sensor.pge_magazyn_energii` | **PGE Magazyn energii** - pozostała do rozliczenia energia (historia w atrybutach). | kWh |
 | `sensor.pge_okres_rozliczeniowy` | **PGE Okres rozliczeniowy** - przedział dat dla najnowszej faktury. | tekst |
 | `sensor.pge_<PPE>_magazyn_biezacy` | **PGE Magazyn energii — bieżący z licznika** - stan banku energii na dziś, wyliczony z Twoich liczników (tylko gdy podasz liczniki, patrz niżej). | kWh |
+| `sensor.pge_<PPE>_zuzycie_do_zaplaty_biezace` | **PGE Zużycie do zapłaty — bieżący okres** - pobór niepokryty magazynem od początku bieżącego okresu; zeruje się po pojawieniu się nowej faktury (tylko z licznikami). | kWh |
+| `sensor.pge_<PPE>_zuzycie_do_zaplaty_poprzedni_okres` | **PGE Zużycie do zapłaty — poprzedni okres** - to samo wyliczenie dla okresu z ostatniej faktury, do porównania z fakturą (tylko z licznikami). | kWh |
 
 Koordynator aktualizuje dane co 8 godzin, a w przypadku błędu (np. przerwa techniczna eBOK) ponawia próby co 30 minut.
 
@@ -71,7 +73,11 @@ PGE pokazuje bank energii tylko na dzień ostatniego rzeczywistego rozliczenia. 
 - energia oddana w danym miesiącu trafia do banku po przemnożeniu przez współczynnik opustu PGE (np. 0,8),
 - pobór zużywa najpierw najstarsze partie energii,
 - partie wygasają po 12 miesiącach,
-- gdy w banku zabraknie energii, wartość staje się ujemna (energia do zapłaty) i jest spłacana z kolejnych oddań.
+- magazyn nie schodzi poniżej zera — gdy zabraknie w nim energii, dalszy pobór trafia do sensora **Zużycie do zapłaty — bieżący okres** i jest spłacany z kolejnych oddań.
+
+Magazyn i oba liczniki zużycia do zapłaty pochodzą z tego samego wyliczenia: dopóki magazyn ma kWh, zużycie do zapłaty wynosi 0. Okres to `sensor.pge_<PPE>_okres_rozliczeniowy` z ostatniej faktury rzeczywistej — liczenie bieżące startuje dzień po jego końcu i zeruje się dopiero, gdy w eBOK pojawi się kolejna faktura z nowym okresem (nie w dniu końca okresu).
+
+**Zużycie do zapłaty — poprzedni okres** liczy ten sam algorytm dla okresu z ostatniej faktury: startuje z magazynu z faktury wcześniejszej i używa Twoich liczników z tego okresu. Atrybuty pozwalają porównać wynik z fakturą: `pobrana_od_startu` / `pobrana_faktura`, `oddana_od_startu` / `oddana_faktura` oraz `magazyn_wyliczony_na_koniec` / `magazyn_z_faktury`. Wymaga statystyk liczników za cały ten okres i faktury z poprzedniego okresu w eBOK.
 
 Wymagania:
 

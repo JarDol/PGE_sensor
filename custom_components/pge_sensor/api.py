@@ -45,6 +45,9 @@ class BalanceInfo:
     actual_invoice_number: Optional[str] = None
     actual_invoice_date: Optional[str] = None
     prosument: Optional[bool] = None
+    # Bank of the settlement before the latest one, i.e. as of the start of billing_period.
+    previous_energy_storage: dict | None = None
+    previous_billing_period: Optional[str] = None
 
 
 class PgeScraper:
@@ -97,7 +100,7 @@ class PgeScraper:
         billing account is used, preserving the historical single-account behavior.
         """
         from .settlement import (
-            billing_period as settlement_period, latest_actual, latest_invoice, numeric,
+            billing_period as settlement_period, latest_actual, latest_invoice, numeric, previous_actual,
         )
 
         # Always perform a fresh login to ensure the access token is valid (it expires over time)
@@ -156,8 +159,7 @@ class PgeScraper:
             invoice_number = target_doc.get("documentNumber")
             payment_status = target_doc.get("paymentStatus")
             invoice_amount = target_doc.get("totalAmount")
-            document_id = target_doc.get("documentId")
-            
+
             if target_doc.get("creationDate"):
                 issue_date = parse_date(target_doc["creationDate"]).date()
             if target_doc.get("paidDate"):
@@ -177,6 +179,7 @@ class PgeScraper:
         # Its financial amount is still valid; do not require energy details.
         actual_invoice = latest_invoice(documents)
         settlement_date = settlement_invoice = settlement_amount = None
+        previous_energy_storage = previous_billing_period = None
         forecast_energy = forecast_period = None
         if target_doc and target_doc.get("documentType") == "PREPAYMENT_INVOICE":
             forecasts = target_doc.get("ppmConsumptions") or []
@@ -195,17 +198,13 @@ class PgeScraper:
             settlement_invoice = actual.get("documentNumber")
             billing_period, settlement_date = settlement_period(ppm)
             ppe = ppm.get("ppmNumber")
-            document_id = actual.get("documentId")
-            ppm_id = (ppm.get("ppm") or {}).get("id")
-            if actual.get("prosument") is True and document_id and ppm_id:
-                url = f"{self.BASE_URL}/mbok-service-v1/billingAccountsDocument/{document_id}/datawarehouse/{ppm_id}"
-                try:
-                    response = self._session.get(url, timeout=self._timeout)
-                    response.raise_for_status()
-                    payload = response.json()
-                    energy_storage = payload if isinstance(payload, dict) else None
-                except (requests.RequestException, ValueError):
-                    _LOGGER.warning("Unable to retrieve settlement bank; leaving it unknown")
+            energy_storage = self._get_bank(actual)
+            if energy_storage is not None:
+                # The bank the settled period started from, for the meter projection.
+                previous = previous_actual(documents, actual)
+                if previous and len(previous["ppmConsumptions"]) == 1:
+                    previous_billing_period, _ = settlement_period(previous["ppmConsumptions"][0])
+                    previous_energy_storage = self._get_bank(previous) if previous_billing_period else None
 
         return BalanceInfo(
             amount=amount,
@@ -225,12 +224,31 @@ class PgeScraper:
             settlement_date=settlement_date, settlement_invoice=settlement_invoice,
             settlement_amount=settlement_amount, forecast_energy=forecast_energy,
             forecast_period=forecast_period,
+            previous_energy_storage=previous_energy_storage,
+            previous_billing_period=previous_billing_period,
             actual_invoice_amount=numeric(actual_invoice.get("totalAmount")) if actual_invoice else None,
             actual_invoice_number=actual_invoice.get("documentNumber") if actual_invoice else None,
             actual_invoice_date=str(actual_invoice.get("creationDate") or "")[:10] or None if actual_invoice else None,
             prosument=(target_doc.get("prosument") if target_doc and isinstance(target_doc.get("prosument"), bool)
                        else actual_invoice.get("prosument") if actual_invoice else None)
         )
+
+    def _get_bank(self, document: dict) -> dict | None:
+        """Bank of a prosumer's single-point settlement as of that settlement, or unknown."""
+        ppm_id = (document["ppmConsumptions"][0].get("ppm") or {}).get("id")
+        document_id = document.get("documentId")
+        if document.get("prosument") is not True or not document_id or not ppm_id:
+            return None
+        url = f"{self.BASE_URL}/mbok-service-v1/billingAccountsDocument/{document_id}/datawarehouse/{ppm_id}"
+        try:
+            response = self._session.get(url, timeout=self._timeout)
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError):
+            _LOGGER.warning("Unable to retrieve settlement bank of %s; leaving it unknown",
+                            document.get("documentNumber"))
+            return None
+        return payload if isinstance(payload, dict) else None
 
     def _login(self) -> None:
         payload = {

@@ -3,8 +3,9 @@
 PGE reports the bank only as of the last actual settlement. Starting from the
 batches left after that settlement, every month of local meter readings adds
 a new batch (exported energy × opust factor), consumption draws batches FIFO,
-and batches older than 12 months expire. Shortage becomes a deficit (negative
-balance) that later exports repay first.
+and batches older than 12 months expire. The bank never goes below zero:
+consumption it cannot cover is a deficit (energy to pay for) that later
+exports repay first.
 """
 from __future__ import annotations
 
@@ -60,6 +61,19 @@ def reading_days(start: date, today: date) -> list[date]:
     return days
 
 
+def period_reading_days(billing_period: str | None) -> list[date]:
+    """Reading days spanning a settled period, ending the day after it."""
+    try:
+        start = date.fromisoformat(str(billing_period or "").split("/")[0].strip())
+    except ValueError:
+        return []
+    end = projection_start(billing_period)
+    if end is None or end <= start:
+        return []
+    days = reading_days(start, end)
+    return days if days[-1] == end else [*days, end]
+
+
 def simulate_bank(
     history: list[dict[str, Any]],
     factor: float,
@@ -84,6 +98,7 @@ def simulate_bank(
             batches.append([month_index(inserted), left * factor])
 
     deficit = imported = exported = expired = 0.0
+    deficit_since: str | None = None
     for (day, imp, exp), (_, next_imp, next_exp) in zip(readings, readings[1:]):
         month = month_index(day)
         consumed = max(next_imp - imp, 0.0)
@@ -109,6 +124,10 @@ def simulate_bank(
                 kept.append([batch_month, amount - used])
         batches = kept
         deficit += remaining
+        if deficit <= _DUST_KWH:
+            deficit_since = None
+        elif deficit_since is None:
+            deficit_since = _month_label(month)
 
     now = month_index(today)
     active = []
@@ -123,12 +142,14 @@ def simulate_bank(
             })
 
     return {
-        "pozostalo": quantize(sum(b[1] for b in batches if now - b[0] <= EXPIRY_MONTHS) - deficit, step),
+        # A deficit exists only once every batch is used up, so this is never negative.
+        "pozostalo": quantize(sum(b[1] for b in batches if now - b[0] <= EXPIRY_MONTHS), step),
         "factor": factor,
         "pobrana_od_startu": quantize(imported, step),
         "oddana_od_startu": quantize(exported, step),
         "oddana_po_opuscie": quantize(exported * factor, step),
         "deficyt": quantize(deficit, step),
+        "deficyt_od": deficit_since,
         "wygaslo": quantize(expired, step),
         "najblizsze_wygasniecie": active[0] if active else None,
         "partie": active,

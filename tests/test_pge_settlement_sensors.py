@@ -153,4 +153,82 @@ class SensorTests(unittest.TestCase):
         self.setup(True,[record])
         self.assertIsNone(record.disabled_by)
 
+class MeterProjectionTests(unittest.TestCase):
+    """Bank, current and previous energy to pay come from one projection."""
+
+    def projection(self, values, readings, previous_readings, now=(150, 0)):
+        states={'sensor.imp':now[0],'sensor.exp':now[1]}
+        hass=types.SimpleNamespace(config=types.SimpleNamespace(components={'recorder'}),
+            states=types.SimpleNamespace(get=lambda e:types.SimpleNamespace(state=str(states[e]),attributes={})))
+        coordinator=types.SimpleNamespace(data=values,last_update_success=True,name='PGE test')
+        projection=sensors.MeterProjection(hass,coordinator,('sensor.imp','sensor.exp'),step=0.1)
+        projection.start=date(2026,3,1)
+        projection._readings=readings;projection._previous_readings=previous_readings
+        clock=types.SimpleNamespace(now=lambda:types.SimpleNamespace(date=lambda:date(2026,3,20)),
+                                    start_of_local_day=lambda day:day)
+        with patch.object(sensors,'dt_util',clock), \
+             patch.object(sensors,'EnergyConverter',types.SimpleNamespace(convert=lambda value,unit,to:value)):
+            projection._recalculate()
+            entities=[cls(coordinator,'test_1','test','Test',projection) for cls in
+                      (sensors.PgeMeterBankSensor,sensors.PgeMeterDeficitSensor,sensors.PgeMeterPreviousDeficitSensor)]
+            return [(e.native_value,e.extra_state_attributes,e.available) for e in entities], entities
+
+    def test_bank_runs_out_then_energy_to_pay_counts(self):
+        bank={'zones':{'Strefa 1':{'dataWarehouseSummary':{'leftEnergyAmountSum':50,'factor':.8},
+              'dataWarehousePpm':[{'insertToGridDate':'2026-02-01','leftEnergyAmount':50}]}}}
+        previous={'zones':{'Strefa 1':{'dataWarehouseSummary':{'leftEnergyAmountSum':100,'factor':.8},
+              'dataWarehousePpm':[{'insertToGridDate':'2025-11-01','leftEnergyAmount':100}]}}}
+        values=data(billing_period='2026-01-01 / 2026-02-28',energy_storage=bank,consumed_energy=120,feed_in_energy=50,
+                    previous_energy_storage=previous,previous_billing_period='2025-07-01 / 2025-12-31')
+        # Current: 40 kWh bank, 100 kWh used since 1 March. Previous: 80 kWh bank,
+        # 120 kWh used and 50 kWh exported (40 after opust) in January–February.
+        (bank_now,current,previous_period),entities=self.projection(values,
+            [(date(2026,3,1),50,0)],
+            [(date(2026,1,1),0,0),(date(2026,2,1),60,50),(date(2026,3,1),120,50)])
+        self.assertEqual(bank_now[0],0.0)
+        self.assertEqual((current[0],current[1]['deficyt_od'],current[1]['magazyn']),(60.0,'2026-03',0.0))
+        with patch.object(sensors,'dt_util',types.SimpleNamespace(start_of_local_day=lambda day:day)):
+            self.assertEqual(entities[1].last_reset,date(2026,3,1))
+        self.assertEqual(previous_period[0],0.0)
+        attrs=previous_period[1]
+        self.assertEqual((attrs['pobrana_od_startu'],attrs['pobrana_faktura']),(120.0,120))
+        self.assertEqual((attrs['oddana_od_startu'],attrs['oddana_faktura']),(50.0,50))
+        # 80 + 40 − 120 = 0 kWh left; PGE's invoice says 40 kWh: the comparison exposes the gap.
+        self.assertEqual((attrs['magazyn_wyliczony_na_koniec'],attrs['magazyn_z_faktury']),(0.0,40.0))
+        self.assertIsNone(entities[2]._attr_state_class)
+
+    def test_previous_period_needs_previous_bank_and_full_statistics(self):
+        values=data(previous_energy_storage=None,previous_billing_period=None)
+        results,_=self.projection(values,[(date(2026,3,1),0,0)],[])
+        self.assertTrue(results[1][2])
+        self.assertFalse(results[2][2])
+        values=data(previous_energy_storage={'zones':{}},previous_billing_period='2025-07-01 / 2025-12-31')
+        results,_=self.projection(values,[(date(2026,3,1),0,0)],[(date(2026,1,1),0,0)])
+        self.assertFalse(results[2][2])
+
+    def test_meters_create_three_entities_and_removal_drops_them(self):
+        unsubscribed=[]
+        hass=types.SimpleNamespace(config_entries=None,registry=Registry(),async_create_task=lambda coro:coro.close(),
+            data={'pge_sensor':{'test':types.SimpleNamespace(data=data(),last_update_success=True,
+                async_add_listener=lambda cb:lambda:unsubscribed.append('coordinator'))}})
+        entry=types.SimpleNamespace(entry_id='test',data={'username':'test','account_id':1},title='Test',
+            options={'meter_import_entity':'sensor.imp','meter_export_entity':'sensor.exp'},
+            async_on_unload=lambda stop:unsubscribed.append(stop))
+        added=[]
+        with patch.object(sensors,'async_track_state_change_event',lambda *a:lambda:None), \
+             patch.object(sensors,'async_track_time_interval',lambda *a:lambda:None):
+            asyncio.run(sensors.async_setup_entry(hass,entry,added.extend))
+        meter=[e for e in added if isinstance(e,sensors.PgeMeterSensor)]
+        self.assertEqual(len(added),17)
+        self.assertEqual(len({id(e._projection) for e in meter}),1)
+        self.assertEqual(meter[1].entity_id,'sensor.pge_1_zuzycie_do_zaplaty_biezace')
+        unsubscribed[0]()
+        self.assertIn('coordinator',unsubscribed)
+
+        registry=Registry([types.SimpleNamespace(entity_id=f'sensor.{k}',unique_id=f'test_1_{k}',disabled_by=None)
+                           for k in ('meter_bank','meter_deficit','meter_deficit_previous')])
+        hass.registry=registry;entry.options={}
+        asyncio.run(sensors.async_setup_entry(hass,entry,[].extend))
+        self.assertEqual(registry.entries,[])
+
 if __name__=='__main__':unittest.main()

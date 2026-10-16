@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -27,7 +28,9 @@ from .entity_ids import default_entity_id, entry_identifier
 from .const import (
     CONF_ACCOUNT_ID, CONF_METER_EXPORT, CONF_METER_IMPORT, CONF_OPUST_FACTOR, CONF_PRECISION, DOMAIN,
 )
-from .local_bank import DEFAULT_FACTOR, DEFAULT_STEP, projection_start, reading_days, simulate_bank
+from .local_bank import (
+    DEFAULT_FACTOR, DEFAULT_STEP, period_reading_days, projection_start, quantize, reading_days, simulate_bank,
+)
 from .settlement import bank_total, bank_zones
 from .coordinator import PgeEbokCoordinator
 
@@ -96,14 +99,19 @@ async def async_setup_entry(
     ]
 
     meters = (entry.options.get(CONF_METER_IMPORT), entry.options.get(CONF_METER_EXPORT))
+    meter_sensors = (PgeMeterBankSensor, PgeMeterDeficitSensor, PgeMeterPreviousDeficitSensor)
     if all(meters):
-        entities.append(PgeMeterBankSensor(
-            coordinator, slug, username, device_name, meters,
+        projection = MeterProjection(
+            hass, coordinator, meters,
             step=entry.options.get(CONF_PRECISION, DEFAULT_STEP),
-            factor=entry.options.get(CONF_OPUST_FACTOR)))
-    elif entity_id := registry.async_get_entity_id("sensor", DOMAIN, f"{slug}_meter_bank"):
-        # Meters were removed from the options; drop the orphaned projection.
-        registry.async_remove(entity_id)
+            factor=entry.options.get(CONF_OPUST_FACTOR))
+        entities.extend(cls(coordinator, slug, username, device_name, projection) for cls in meter_sensors)
+        entry.async_on_unload(projection.async_start())
+    else:
+        # Meters were removed from the options; drop the orphaned projections.
+        for key in ("meter_bank", "meter_deficit", "meter_deficit_previous"):
+            if entity_id := registry.async_get_entity_id("sensor", DOMAIN, f"{slug}_{key}"):
+                registry.async_remove(entity_id)
 
     # New entities only; the registry keeps IDs of existing ones.
     identifier = entry_identifier(entry.data, entry.title)
@@ -514,64 +522,79 @@ def _meter_readings(
     return readings
 
 
-class PgeMeterBankSensor(PgeBaseSensor):
-    """Bank after opust as of now: last settlement projected with local meter readings."""
+class MeterProjection:
+    """PGE's bank projected with local meters, shared by the meter entities.
 
-    _attr_device_class = SensorDeviceClass.ENERGY_STORAGE
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-    _attr_icon = "mdi:home-battery"
-    _attr_name = "PGE Magazyn energii — bieżący z licznika"
+    ``current`` starts from the latest settlement's bank on the day after its
+    period and runs until now. ``previous`` starts from the settlement before it
+    and runs through the latest settled period, to compare with that invoice.
+    """
 
     def __init__(
-        self, coordinator, slug, username, device_name, meters: tuple[str, str],
+        self, hass: HomeAssistant, coordinator: PgeEbokCoordinator, meters: tuple[str, str],
         *, step: float = DEFAULT_STEP, factor: float | None = None,
     ) -> None:
-        super().__init__(coordinator, slug, username, device_name)
-        self._meters = meters
-        self._step = step
+        self.hass = hass
+        self.coordinator = coordinator
+        self.meters = meters
+        self.step = step
         self._factor_override = factor
-        # Show exactly the configured step: 0.01 -> 2 decimals, 0.5 -> 1, 1 -> 0.
-        self._attr_suggested_display_precision = len(f"{step:g}".partition(".")[2])
-        self._start: date | None = None
+        self.start: date | None = None
+        self.current: dict[str, Any] | None = None
+        self.previous: dict[str, Any] | None = None
         self._readings: list[tuple[date, float, float]] = []
-        self._result: dict[str, Any] | None = None
-        self._problem: str | None = None
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self._slug}_meter_bank"
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        self.async_on_remove(async_track_state_change_event(
-            self.hass, list(self._meters), self._handle_meter_change))
-        self.async_on_remove(async_track_time_interval(
-            self.hass, self._async_refresh_readings, METER_STATISTICS_INTERVAL))
-        await self._async_refresh_readings()
+        self._previous_period: str | None = None
+        self._previous_readings: list[tuple[date, float, float]] = []
+        self._listeners: list[Callable[[], None]] = []
+        self._problems: dict[str, str | None] = {}
 
     @callback
-    def _handle_coordinator_update(self) -> None:
-        # A new settlement moves the projection start and replaces the batches.
-        self.hass.async_create_task(self._async_refresh_readings())
+    def async_start(self) -> Callable[[], None]:
+        """Follow the meters, the statistics and new settlements; return the stop callback."""
+        unsubs = [
+            async_track_state_change_event(self.hass, list(self.meters), self._handle_meter_change),
+            async_track_time_interval(self.hass, self._async_refresh, METER_STATISTICS_INTERVAL),
+            # A new settlement moves the period and replaces both banks.
+            self.coordinator.async_add_listener(
+                lambda: self.hass.async_create_task(self._async_refresh())),
+        ]
+        self.hass.async_create_task(self._async_refresh())
+        return lambda: [unsub() for unsub in unsubs]
+
+    @callback
+    def async_add_listener(self, update: Callable[[], None]) -> Callable[[], None]:
+        self._listeners.append(update)
+        return lambda: self._listeners.remove(update)
+
+    @callback
+    def _notify(self) -> None:
+        for update in list(self._listeners):
+            update()
 
     @callback
     def _handle_meter_change(self, _event: Event) -> None:
         self._recalculate()
-        self.async_write_ha_state()
+        self._notify()
 
-    async def _async_refresh_readings(self, _now: datetime | None = None) -> None:
+    async def _async_refresh(self, _now: datetime | None = None) -> None:
         data = self.coordinator.data
-        self._start = projection_start(data.billing_period if data else None)
+        period = data.billing_period if data else None
+        self.start = projection_start(period)
         self._readings = []
-        if self._start and "recorder" in self.hass.config.components:
+        if "recorder" in self.hass.config.components:
             from homeassistant.components.recorder import get_instance
 
-            days = reading_days(self._start, dt_util.now().date())
-            self._readings = await get_instance(self.hass).async_add_executor_job(
-                _meter_readings, self.hass, self._meters, days)
+            executor = get_instance(self.hass).async_add_executor_job
+            if self.start:
+                days = reading_days(self.start, dt_util.now().date())
+                self._readings = await executor(_meter_readings, self.hass, self.meters, days)
+            # A settled period's readings never change; fetch them once per period.
+            days = period_reading_days(period)
+            if period != self._previous_period or len(self._previous_readings) != len(days):
+                self._previous_period = period
+                self._previous_readings = await executor(_meter_readings, self.hass, self.meters, days)
         self._recalculate()
-        self.async_write_ha_state()
+        self._notify()
 
     def _current_kwh(self, entity_id: str) -> float | None:
         state = self.hass.states.get(entity_id)
@@ -585,53 +608,109 @@ class PgeMeterBankSensor(PgeBaseSensor):
             return None
 
     def _recalculate(self) -> None:
-        self._result, problem = self._project()
-        if problem != self._problem and problem:
-            _LOGGER.warning("%s: %s", self.entity_id, problem)
-        self._problem = problem
+        self.current, current_problem = self._project_current()
+        self.previous, previous_problem = self._project_previous()
+        for kind, problem in (("bieżący okres", current_problem), ("poprzedni okres", previous_problem)):
+            if problem and problem != self._problems.get(kind):
+                _LOGGER.warning("%s, %s: %s", self.coordinator.name, kind, problem)
+            self._problems[kind] = problem
 
-    def _project(self) -> tuple[dict[str, Any] | None, str | None]:
+    def _simulate(
+        self, storage: dict[str, Any] | None, readings: list[tuple[date, float, float]], today: date,
+        *, fallback_factor: float | None = None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        advertised = (storage or {}).get("zones") or {}
+        if any(name.startswith("Strefa 2") for name in advertised):
+            return None, "taryfy dwustrefowe nie są obsługiwane"
+        zone = bank_zones(storage).get("Strefa 1") or {}
+        if self._factor_override:
+            factor, source = self._factor_override, "ręczny"
+        elif zone.get("factor") or fallback_factor:
+            factor, source = zone.get("factor") or fallback_factor, "PGE"
+        else:
+            factor, source = DEFAULT_FACTOR, "domyślny"
+        result = simulate_bank(zone.get("history") or [], factor, readings, today, self.step)
+        result.update({"factor_zrodlo": source, "factor_pge": zone.get("factor"), "dokladnosc": self.step})
+        return result, None
+
+    def _settled_bank(self) -> float | None:
+        settled = bank_total(self.coordinator.data.energy_storage)
+        return quantize(settled, self.step) if settled is not None else None
+
+    def _project_current(self) -> tuple[dict[str, Any] | None, str | None]:
         data = self.coordinator.data
         if not data:
             return None, None
-        if self._start is None:
+        if self.start is None:
             return None, "brak okresu ostatniego rzeczywistego rozliczenia"
         if "recorder" not in self.hass.config.components:
             return None, "integracja recorder jest wyłączona — brak statystyk liczników"
-        advertised = (data.energy_storage or {}).get("zones") or {}
-        if any(name.startswith("Strefa 2") for name in advertised):
-            return None, "taryfy dwustrefowe nie są obsługiwane"
-        if not self._readings or self._readings[0][0] != self._start:
-            return None, f"brak statystyk liczników {', '.join(self._meters)} na {self._start}"
-        current = [self._current_kwh(meter) for meter in self._meters]
+        if not self._readings or self._readings[0][0] != self.start:
+            return None, f"brak statystyk liczników {', '.join(self.meters)} na {self.start}"
+        current = [self._current_kwh(meter) for meter in self.meters]
         if None in current:
             return None, None  # meter momentarily unavailable; not worth a warning
-
-        zone = bank_zones(data.energy_storage).get("Strefa 1") or {}
-        if self._factor_override:
-            factor, source = self._factor_override, "ręczny"
-        elif zone.get("factor"):
-            factor, source = zone["factor"], "PGE"
-        else:
-            factor, source = DEFAULT_FACTOR, "domyślny"
         today = dt_util.now().date()
-        result = simulate_bank(zone.get("history") or [], factor,
-                               [*self._readings, (today, current[0], current[1])], today, self._step)
-        settled = bank_total(data.energy_storage)
-        result.update({
-            "factor_zrodlo": source,
-            "factor_pge": zone.get("factor"),
-            "dokladnosc": self._step,
-            "liczone_od": self._start.isoformat(),
-            "bank_z_rozliczenia": round(settled, 1) if settled is not None else None,
-            "licznik_pobrana": self._meters[0],
-            "licznik_oddana": self._meters[1],
-        })
-        return result, None
+        result, problem = self._simulate(
+            data.energy_storage, [*self._readings, (today, current[0], current[1])], today)
+        if result:
+            result.update({
+                "liczone_od": self.start.isoformat(),
+                "bank_z_rozliczenia": self._settled_bank(),
+                "licznik_pobrana": self.meters[0],
+                "licznik_oddana": self.meters[1],
+            })
+        return result, problem
+
+    def _project_previous(self) -> tuple[dict[str, Any] | None, str | None]:
+        data = self.coordinator.data
+        if not data or not data.billing_period or "recorder" not in self.hass.config.components:
+            return None, None  # already reported for the current period
+        if data.previous_energy_storage is None:
+            return None, "PGE nie udostępnia magazynu z poprzedniej faktury rzeczywistej"
+        days = period_reading_days(data.billing_period)
+        if not days or [day for day, _, _ in self._previous_readings] != days:
+            return None, (f"brak statystyk liczników {', '.join(self.meters)} "
+                          f"na cały okres {data.billing_period}")
+        factor = bank_zones(data.energy_storage).get("Strefa 1", {}).get("factor")
+        result, problem = self._simulate(data.previous_energy_storage, self._previous_readings,
+                                         days[-1] - timedelta(days=1), fallback_factor=factor)
+        if result:
+            result.update({
+                "okres": data.billing_period,
+                "magazyn_z_okresu": data.previous_billing_period,
+                "pobrana_faktura": data.consumed_energy,
+                "oddana_faktura": data.feed_in_energy,
+                "magazyn_wyliczony_na_koniec": result["pozostalo"],
+                "magazyn_z_faktury": self._settled_bank(),
+            })
+        return result, problem
+
+
+class PgeMeterSensor(PgeBaseSensor):
+    """A view of the shared meter projection."""
+
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    # Projection result keys exposed as attributes.
+    _ATTRIBUTES: tuple[str, ...] = ()
+
+    def __init__(self, coordinator, slug, username, device_name, projection: MeterProjection) -> None:
+        super().__init__(coordinator, slug, username, device_name)
+        self._projection = projection
+        # Show exactly the configured step: 0.01 -> 2 decimals, 0.5 -> 1, 1 -> 0.
+        self._attr_suggested_display_precision = len(f"{projection.step:g}".partition(".")[2])
 
     @property
-    def native_value(self) -> float | None:
-        return self._result["pozostalo"] if self._result else None
+    def _result(self) -> dict[str, Any] | None:
+        return self._projection.current
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._projection.async_add_listener(self.async_write_ha_state))
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """The projection writes the state once it has recalculated the new settlement."""
 
     @property
     def available(self) -> bool:
@@ -641,5 +720,87 @@ class PgeMeterBankSensor(PgeBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         attrs = super().extra_state_attributes
         if self._result:
+            attrs.update({key: self._result[key] for key in self._ATTRIBUTES})
+        return attrs
+
+
+class PgeMeterBankSensor(PgeMeterSensor):
+    """Bank after opust as of now: last settlement projected with local meter readings."""
+
+    _attr_device_class = SensorDeviceClass.ENERGY_STORAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:home-battery"
+    _attr_name = "PGE Magazyn energii — bieżący z licznika"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self._slug}_meter_bank"
+
+    @property
+    def native_value(self) -> float | None:
+        return self._result["pozostalo"] if self._result else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attrs = super().extra_state_attributes
+        if self._result:
             attrs.update({k: v for k, v in self._result.items() if k != "pozostalo"})
         return attrs
+
+
+class PgeMeterDeficitSensor(PgeMeterSensor):
+    """Energy the bank did not cover since the latest settled period; resets on a new one."""
+
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_state_class = SensorStateClass.TOTAL
+    _attr_icon = "mdi:transmission-tower-import"
+    _attr_name = "PGE Zużycie do zapłaty — bieżący okres"
+    _ATTRIBUTES = ("deficyt_od", "liczone_od", "pobrana_od_startu", "oddana_od_startu",
+                   "oddana_po_opuscie", "wygaslo", "factor", "factor_zrodlo", "dokladnosc")
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self._slug}_meter_deficit"
+
+    @property
+    def native_value(self) -> float | None:
+        return self._result["deficyt"] if self._result else None
+
+    @property
+    def last_reset(self) -> datetime | None:
+        start = self._projection.start
+        return dt_util.start_of_local_day(start) if start else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attrs = super().extra_state_attributes
+        if self._result:
+            attrs["magazyn"] = self._result["pozostalo"]
+        return attrs
+
+
+class PgeMeterPreviousDeficitSensor(PgeMeterSensor):
+    """Energy the bank did not cover in the latest settled period, to compare with its invoice."""
+
+    _attr_device_class = SensorDeviceClass.ENERGY
+    # One value per settled period, like the other invoice snapshots: not a counter.
+    _attr_state_class = None
+    _attr_icon = "mdi:file-compare"
+    _attr_name = "PGE Zużycie do zapłaty — poprzedni okres"
+    _ATTRIBUTES = ("okres", "magazyn_z_okresu", "deficyt_od", "pobrana_od_startu", "pobrana_faktura",
+                   "oddana_od_startu", "oddana_faktura", "oddana_po_opuscie", "magazyn_wyliczony_na_koniec",
+                   "magazyn_z_faktury", "wygaslo", "factor", "factor_zrodlo", "dokladnosc")
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self._slug}_meter_deficit_previous"
+
+    @property
+    def _result(self) -> dict[str, Any] | None:
+        return self._projection.previous
+
+    @property
+    def native_value(self) -> float | None:
+        return self._result["deficyt"] if self._result else None
+
+

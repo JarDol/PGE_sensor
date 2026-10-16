@@ -21,6 +21,14 @@ def latest_actual(documents: list[dict[str, Any]]) -> dict[str, Any] | None:
     ), default=None)
 
 
+def previous_actual(documents: list[dict[str, Any]], latest: dict[str, Any]) -> dict[str, Any] | None:
+    """The measured settlement of the period that ended before ``latest`` began."""
+    start = min(str(ppm.get("billingPeriodFrom") or "")[:10] for ppm in latest["ppmConsumptions"])
+    earlier = [doc for doc in documents if doc.get("documentType") == "INVOICE" and doc.get("ppmConsumptions")
+               and max(str(ppm.get("billingPeriodTo") or "")[:10] for ppm in doc["ppmConsumptions"]) < start]
+    return latest_actual(earlier)
+
+
 def latest_invoice(documents: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Financial invoices remain valid when PGE omits energy details."""
     return max((doc for doc in documents if doc.get("documentType") == "INVOICE"),

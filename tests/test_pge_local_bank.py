@@ -26,6 +26,14 @@ class ProjectionDatesTests(unittest.TestCase):
         self.assertEqual(bank.reading_days(date(2025, 11, 1), date(2026, 1, 15)),
                          [date(2025, 11, 1), date(2025, 12, 1), date(2026, 1, 1)])
 
+    def test_period_reading_days_end_after_period(self):
+        self.assertEqual(bank.period_reading_days("2025-11-16 / 2026-01-15"),
+                         [date(2025, 11, 16), date(2025, 12, 1), date(2026, 1, 1), date(2026, 1, 16)])
+        self.assertEqual(bank.period_reading_days("2026-01-01 / 2026-02-28"),
+                         [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)])
+        self.assertEqual(bank.period_reading_days(None), [])
+        self.assertEqual(bank.period_reading_days("2026-03-01 / 2026-01-01"), [])
+
     def test_mid_month_start_then_month_starts(self):
         self.assertEqual(bank.reading_days(date(2026, 3, 16), date(2026, 4, 1)),
                          [date(2026, 3, 16), date(2026, 4, 1)])
@@ -49,14 +57,32 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(result["oddana_po_opuscie"], 400.0)
         self.assertEqual(result["pobrana_od_startu"], 100.0)
 
-    def test_deficit_is_negative_and_repaid_first(self):
+    def test_empty_bank_stays_zero_and_deficit_is_repaid_first(self):
         readings = [(date(2026, 1, 1), 0, 0), (date(2026, 2, 1), 100, 0),
                     (date(2026, 3, 1), 100, 200)]
         winter = bank.simulate_bank([], 0.8, readings[:2], date(2026, 1, 31))
-        self.assertEqual((winter["pozostalo"], winter["deficyt"]), (-100.0, 100.0))
+        self.assertEqual((winter["pozostalo"], winter["deficyt"], winter["deficyt_od"]), (0.0, 100.0, "2026-01"))
         spring = bank.simulate_bank([], 0.8, readings, date(2026, 2, 28))
         # 160 kWh banked from February repays the 100 kWh January deficit.
-        self.assertEqual((spring["pozostalo"], spring["deficyt"]), (60.0, 0.0))
+        self.assertEqual((spring["pozostalo"], spring["deficyt"], spring["deficyt_od"]), (60.0, 0.0, None))
+
+    def test_deficit_starts_when_bank_runs_out(self):
+        history = [batch("2025-09-01", 50)]
+        readings = [(date(2026, 1, 1), 0, 0), (date(2026, 2, 1), 30, 0),
+                    (date(2026, 3, 1), 80, 0), (date(2026, 3, 10), 90, 0)]
+        result = bank.simulate_bank(history, 0.8, readings, date(2026, 3, 10))
+        # 40 kWh bank: January uses 30, February the last 10 and 40 beyond it, March 10 more.
+        self.assertEqual((result["pozostalo"], result["deficyt"], result["deficyt_od"]), (0.0, 50.0, "2026-02"))
+
+    def test_previous_period_ends_where_current_starts(self):
+        # The previous settlement's bank, run through the latest settled period,
+        # meets the current projection on the day after that period.
+        previous = [batch("2025-11-01", 100)]
+        readings = [(day, imp, 0) for day, imp in zip(
+            bank.period_reading_days("2026-01-01 / 2026-02-28"), (0, 50, 120))]
+        settled = bank.simulate_bank(previous, 0.8, readings, date(2026, 2, 28))
+        self.assertEqual((settled["pozostalo"], settled["deficyt"], settled["deficyt_od"]), (0.0, 40.0, "2026-02"))
+        self.assertEqual(readings[-1][0], bank.projection_start("2026-01-01 / 2026-02-28"))
 
     def test_batches_expire_after_twelve_months(self):
         history = [batch("2025-01-10", 100)]

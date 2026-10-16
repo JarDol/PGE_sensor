@@ -62,6 +62,22 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(data.settlement_date, "2026-06-30")
         self.assertIn('/synthetic-doc/datawarehouse/synthetic-point', session.get.call_args.args[0])
 
+    def test_previous_settlement_bank_is_fetched(self):
+        previous = document(creation="2026-02-01")
+        previous["documentId"] = "previous-doc"
+        previous["ppmConsumptions"][0].update(billingPeriodFrom="2025-07-01T00:00:00",
+                                              billingPeriodTo="2025-12-31T00:00:00")
+        data, session = self.run_parser([document(), previous])
+        self.assertEqual(data.previous_billing_period, "2025-07-01 / 2025-12-31")
+        self.assertIsNotNone(data.previous_energy_storage)
+        self.assertIn('/previous-doc/datawarehouse/synthetic-point', session.get.call_args.args[0])
+
+    def test_no_previous_settlement_leaves_it_unknown(self):
+        data, session = self.run_parser([document()])
+        self.assertIsNone(data.previous_energy_storage)
+        self.assertIsNone(data.previous_billing_period)
+        self.assertEqual(session.get.call_count, 1)
+
     def test_ordinary_customer_keeps_finances_without_energy(self):
         data, session = self.run_parser([document(ppm=False, prosument=False)])
         self.assertEqual(data.actual_invoice_amount, 50)

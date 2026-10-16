@@ -23,6 +23,19 @@ class SettlementTests(unittest.TestCase):
         newer = {"documentType": "INVOICE", "creationDate": "2026-07-01", "ppmConsumptions": [{"billingPeriodTo": "2026-06-30"}]}
         self.assertIs(helpers.latest_actual([older, newer]), newer)
 
+    def test_previous_settlement_ends_before_latest_period(self):
+        def invoice(start, end, created):
+            return {"documentType": "INVOICE", "creationDate": created,
+                    "ppmConsumptions": [{"billingPeriodFrom": start + "T00:00:00", "billingPeriodTo": end + "T00:00:00"}]}
+        oldest = invoice("2025-07-01", "2025-12-31", "2026-01-10")
+        previous = invoice("2026-01-01", "2026-06-30", "2026-07-10")
+        latest = invoice("2026-07-01", "2026-12-31", "2027-01-10")
+        correction = invoice("2026-07-01", "2026-12-31", "2027-02-01")
+        forecast = {"documentType": "PREPAYMENT_INVOICE", "ppmConsumptions": [{"billingPeriodTo": "2026-06-30"}]}
+        documents = [correction, latest, forecast, previous, oldest]
+        self.assertIs(helpers.previous_actual(documents, latest), previous)
+        self.assertIsNone(helpers.previous_actual(documents, oldest))
+
     def test_financial_invoice_without_energy_is_still_latest(self):
         older = {"documentType": "INVOICE", "creationDate": "2026-01-01", "ppmConsumptions": [{}]}
         newer = {"documentType": "INVOICE", "creationDate": "2026-02-01", "ppmConsumptions": []}
